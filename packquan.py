@@ -4,7 +4,7 @@ import math
 from itertools import permutations
 
 # --- CORE CALCULATION ENGINE ---
-def optimize_packing(lp, wp, hp, part_weight, lb, wb, hb, max_box_weight, clearance):
+def optimize_packing(lp, wp, hp, part_weight, lb, wb, hb, max_box_weight, clearance, total_qty):
     # Adjust box dimensions for clearance
     eff_lb, eff_wb, eff_hb = lb - clearance, wb - clearance, hb - clearance
     
@@ -14,8 +14,8 @@ def optimize_packing(lp, wp, hp, part_weight, lb, wb, hb, max_box_weight, cleara
     part_dims = [lp, wp, hp]
     orientations = list(set(permutations(part_dims)))
     
-    best_result = None
-    max_parts = -1
+    best_orientation_result = None
+    max_parts_per_box = -1
 
     for orientation in orientations:
         pl, pw, ph = orientation
@@ -25,119 +25,149 @@ def optimize_packing(lp, wp, hp, part_weight, lb, wb, hb, max_box_weight, cleara
         ny = math.floor(eff_wb / pw) if eff_wb >= pw else 0
         nz = math.floor(eff_hb / ph) if eff_hb >= ph else 0
         
-        total_parts = nx * ny * nz
+        total_fit = nx * ny * nz
         
         # Weight Constraint Check
-        if part_weight > 0 and (total_parts * part_weight) > max_box_weight:
-            total_parts = math.floor(max_box_weight / part_weight)
+        if part_weight > 0 and (total_fit * part_weight) > max_box_weight:
+            total_fit = math.floor(max_box_weight / part_weight)
         
-        # Volume Calculation
-        box_vol = lb * wb * hb
-        part_vol = lp * wp * hp
-        utilization = ((total_parts * part_vol) / box_vol) * 100 if box_vol > 0 else 0
+        if total_fit > max_parts_per_box:
+            max_parts_per_box = total_fit
+            
+            # Volume Calculation for one full box
+            box_vol = lb * wb * hb
+            part_vol = lp * wp * hp
+            utilization = ((total_fit * part_vol) / box_vol) * 100 if box_vol > 0 else 0
 
-        # Determine Primary Direction
-        if pl == lp: direction = "Lengthwise"
-        elif pl == wp: direction = "Breadthwise"
-        else: direction = "Heightwise"
+            # Determine Primary Direction
+            if pl == lp: direction = "Lengthwise"
+            elif pl == wp: direction = "Breadthwise"
+            else: direction = "Heightwise"
 
-        if total_parts > max_parts:
-            max_parts = total_parts
-            best_result = {
-                "Best Direction": direction,
+            best_orientation_result = {
+                "Direction": direction,
                 "Orientation": f"{pl}x{pw}x{ph}",
-                "Parts per Box": total_parts,
-                "Layout (LxWxH)": f"{nx} x {ny} x {nz}",
-                "Utilization %": round(utilization, 2),
-                "Fit Status": "FIT" if total_parts > 0 else "NO FIT"
+                "Parts_Per_Box": total_fit,
+                "Layout": f"{nx}x{ny}x{nz}",
+                "Utilization_Pct": round(utilization, 2)
             }
             
-    return best_result
+    # --- Logistics Calculations ---
+    if max_parts_per_box > 0:
+        total_boxes = math.ceil(total_qty / max_parts_per_box)
+        full_boxes = math.floor(total_qty / max_parts_per_box)
+        remainder = total_qty % max_parts_per_box
+        
+        return {
+            **best_orientation_result,
+            "Total Qty": total_qty,
+            "Boxes Needed": total_boxes,
+            "Full Boxes": full_boxes,
+            "Last Box Qty": remainder if remainder > 0 else max_parts_per_box,
+            "Status": "FIT"
+        }
+    else:
+        return {"Status": "NO FIT", "Total Qty": total_qty, "Boxes Needed": 0}
 
 # --- STREAMLIT UI ---
-st.set_page_config(page_title="Multi-Part Packaging Engine", layout="wide")
+st.set_page_config(page_title="Supply Chain Box Calculator", layout="wide")
 
-st.title("📦 Multi-Part Packaging Optimization Engine")
-st.markdown("Enter multiple part types below to calculate optimal box density for each.")
+st.title("📦 Logistics & Packaging Optimization Engine")
+st.markdown("Calculate optimal packing and **Total Box Count** for multiple part types.")
 
 # --- SIDEBAR: GLOBAL BOX SETTINGS ---
-st.sidebar.header("Global Box Dimensions")
-lb = st.sidebar.number_input("Box Length (mm)", value=600.0)
-wb = st.sidebar.number_input("Box Width (mm)", value=400.0)
-hb = st.sidebar.number_input("Box Height (mm)", value=400.0)
-max_box_weight = st.sidebar.number_input("Max Weight Capacity (kg)", value=25.0)
-clearance = st.sidebar.number_input("Clearance Tolerance (mm)", value=5.0)
+with st.sidebar:
+    st.header("Standard Box Specs")
+    lb = st.number_input("Box Length (mm)", value=600.0)
+    wb = st.number_input("Box Width (mm)", value=400.0)
+    hb = st.number_input("Box Height (mm)", value=400.0)
+    max_box_weight = st.number_input("Max Weight Cap (kg)", value=20.0)
+    clearance = st.number_input("Clearance (mm)", value=5.0)
+    st.divider()
+    st.info("The engine assumes all parts of one type are packed together.")
 
 # --- MAIN: MULTI-PART INPUT ---
-st.subheader("1. Define Part Manifest")
-st.info("Edit the table below. Add rows for different part types.")
+st.subheader("1. Part Inventory & Requirements")
 
-# Default data for the editor
+# Default data for the editor including Quantity
 default_parts = pd.DataFrame([
-    {"Part ID": "P-001", "Length": 120.0, "Width": 80.0, "Height": 50.0, "Weight": 0.5},
-    {"Part ID": "P-002", "Length": 200.0, "Width": 150.0, "Height": 100.0, "Weight": 2.0},
-    {"Part ID": "P-003", "Length": 500.0, "Width": 300.0, "Height": 100.0, "Weight": 5.0},
+    {"Part ID": "P-101", "L": 120.0, "W": 80.0, "H": 50.0, "Weight": 0.4, "Qty": 500},
+    {"Part ID": "P-102", "L": 250.0, "W": 200.0, "H": 100.0, "Weight": 1.5, "Qty": 120},
+    {"Part ID": "P-103", "L": 400.0, "W": 300.0, "H": 200.0, "Weight": 8.0, "Qty": 45},
 ])
 
-# Interactive Data Editor
 edited_df = st.data_editor(
     default_parts, 
     num_rows="dynamic", 
     use_container_width=True,
     column_config={
         "Part ID": st.column_config.TextColumn("Part ID", required=True),
-        "Length": st.column_config.NumberColumn("L (mm)", min_value=1),
-        "Width": st.column_config.NumberColumn("W (mm)", min_value=1),
-        "Height": st.column_config.NumberColumn("H (mm)", min_value=1),
-        "Weight": st.column_config.NumberColumn("Weight (kg)", min_value=0),
+        "L": st.column_config.NumberColumn("L (mm)"),
+        "W": st.column_config.NumberColumn("W (mm)"),
+        "H": st.column_config.NumberColumn("H (mm)"),
+        "Weight": st.column_config.NumberColumn("Wt (kg)"),
+        "Qty": st.column_config.NumberColumn("Total Qty", min_value=1),
     }
 )
 
 # --- CALCULATION TRIGGER ---
-if st.button("🚀 Run Batch Optimization"):
+if st.button("🚀 Calculate Logistics Plan"):
     results_list = []
     
-    for index, row in edited_df.iterrows():
+    for _, row in edited_df.iterrows():
         res = optimize_packing(
-            row['Length'], row['Width'], row['Height'], row['Weight'],
-            lb, wb, hb, max_box_weight, clearance
+            row['L'], row['W'], row['H'], row['Weight'],
+            lb, wb, hb, max_box_weight, clearance, row['Qty']
         )
         
-        if res:
-            res['Part ID'] = row['Part ID']
-            results_list.append(res)
-        else:
-            results_list.append({
-                "Part ID": row['Part ID'], 
-                "Fit Status": "ERROR/INVALID DIMS",
-                "Parts per Box": 0
-            })
+        res['Part ID'] = row['Part ID']
+        results_list.append(res)
+
+    # Convert to Dataframe
+    res_df = pd.DataFrame(results_list)
+
+    # Organize Columns for the user
+    display_cols = [
+        'Part ID', 'Status', 'Total Qty', 'Parts_Per_Box', 
+        'Boxes Needed', 'Full Boxes', 'Last Box Qty', 
+        'Direction', 'Layout', 'Utilization_Pct'
+    ]
+    res_df = res_df[display_cols]
 
     # --- DISPLAY RESULTS ---
-    res_df = pd.DataFrame(results_list)
+    st.subheader("2. Logistics Plan Summary")
     
-    # Reorder columns to put Part ID first
-    cols = ['Part ID'] + [c for c in res_df.columns if c != 'Part ID']
-    res_df = res_df[cols]
+    # KPIs
+    total_boxes_all = res_df['Boxes Needed'].sum()
+    st.metric("Total Shipping Boxes Required", int(total_boxes_all))
 
-    st.subheader("2. Optimization Results")
+    # Color Styling
+    def style_status(val):
+        color = '#d4edda' if val == "FIT" else '#f8d7da'
+        return f'background-color: {color}'
+
+    st.dataframe(
+        res_df.style.applymap(style_status, subset=['Status']), 
+        use_container_width=True
+    )
+
+    # --- ADVANCED INSIGHTS ---
+    st.subheader("3. Efficiency Analysis")
+    col1, col2 = st.columns(2)
     
-    # Summary Metrics
-    avg_util = res_df[res_df["Fit Status"] == "FIT"]["Utilization %"].mean()
-    st.metric("Average Box Utilization", f"{round(avg_util, 2)}%" if not math.isnan(avg_util) else "0%")
+    with col1:
+        # Pie chart of box distribution
+        import plotly.express as px
+        fig = px.pie(res_df, names='Part ID', values='Boxes Needed', title="Box Requirement by Part")
+        st.plotly_chart(fig, use_container_width=True)
 
-    # Styled Result Table
-    def color_status(val):
-        color = 'green' if val == "FIT" else 'red'
-        return f'color: {color}'
+    with col2:
+        # Warning for "Underfilled" boxes
+        underfilled = res_df[res_df['Last Box Qty'] / res_df['Parts_Per_Box'] < 0.3]
+        if not underfilled.empty:
+            st.warning("⚠️ **Low Fill Warning:** The following parts have a 'Last Box' that is less than 30% full. Consider merging these or using a smaller secondary box.")
+            st.write(underfilled[['Part ID', 'Last Box Qty', 'Parts_Per_Box']])
 
-    st.dataframe(res_df.style.applymap(color_status, subset=['Fit Status']), use_container_width=True)
-
-    # Export functionality
+    # Export
     csv = res_df.to_csv(index=False).encode('utf-8')
-    st.download_button("📥 Download Results as CSV", csv, "packing_results.csv", "text/csv")
-
-    # Flag low efficiency
-    low_eff = res_df[(res_df["Utilization %"] < 50) & (res_df["Fit Status"] == "FIT")]
-    if not low_eff.empty:
-        st.warning(f"⚠️ Warning: {len(low_eff)} part types have space utilization below 50%. Consider alternative packaging for these items.")
+    st.download_button("📥 Download Shipping Manifest (CSV)", csv, "shipping_plan.csv", "text/csv")
