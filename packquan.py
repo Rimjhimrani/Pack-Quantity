@@ -2,6 +2,7 @@ import streamlit as st
 import pandas as pd
 import math
 from itertools import permutations
+import io
 
 class PackagingEngine:
     def __init__(self, lb, wb, hb, max_w, clearance):
@@ -36,14 +37,17 @@ class PackagingEngine:
         return best_fit, best_layout, best_ori
 
     def run_mixed_packing(self, parts_list):
-        """Heuristic for mixing different SKUs in boxes."""
+        """Heuristic for mixing different SKUs in boxes (Consolidated)."""
         manifest = []
         for p in parts_list:
             for _ in range(int(p['Qty'])):
                 manifest.append({
-                    'id': p['Part ID'], 'dims': (p['L'], p['W'], p['H']),
-                    'weight': p['Weight'], 'vol': p['L'] * p['W'] * p['H']
+                    'Part ID': p['Part ID'], 
+                    'dims': (p['L'], p['W'], p['H']),
+                    'Weight': p['Weight'], 
+                    'vol': p['L'] * p['W'] * p['H']
                 })
+        # Sort by volume descending (Largest first)
         manifest.sort(key=lambda x: x['vol'], reverse=True)
 
         boxes = []
@@ -54,100 +58,125 @@ class PackagingEngine:
             idx = 0
             while idx < len(manifest):
                 item = manifest[idx]
-                # Check if item fits dimensions, volume, and weight
                 can_fit = any(o[0]<=self.box_l and o[1]<=self.box_w and o[2]<=self.box_h 
                               for o in permutations(item['dims']))
                 
-                if can_fit and item['vol'] <= rem_vol and item['weight'] <= rem_weight:
+                if can_fit and item['vol'] <= rem_vol and item['Weight'] <= rem_weight:
                     current_box.append(item)
                     rem_vol -= item['vol']
-                    rem_weight -= item['weight']
+                    rem_weight -= item['Weight']
                     manifest.pop(idx)
                 else:
                     idx += 1
-            if not current_box: break # Item too big
+            if not current_box: break 
             boxes.append(current_box)
         return boxes
 
-# --- STREAMLIT UI ---
-st.set_page_config(page_title="Pro Pack Optimizer", layout="wide")
+# --- UI SETUP ---
+st.set_page_config(page_title="Supply Chain Packing Engine", layout="wide")
+st.title("📦 Packaging Optimization Engine")
 
-st.title("📦 Advanced Supply Chain Packaging Engine")
-
-# --- SIDEBAR SETTINGS ---
+# --- SIDEBAR: CONFIGURATION ---
 with st.sidebar:
-    st.header("1. Box Configuration")
+    st.header("1. Target Box Dimensions")
     lb = st.number_input("Box Length (mm)", value=600.0)
     wb = st.number_input("Box Width (mm)", value=400.0)
     hb = st.number_input("Box Height (mm)", value=400.0)
-    max_box_weight = st.number_input("Weight Limit (kg)", value=20.0)
-    clearance = st.number_input("Clearance (mm)", value=5.0)
+    max_box_weight = st.number_input("Max Weight Cap (kg)", value=25.0)
+    clearance = st.number_input("Clearance Tolerance (mm)", value=5.0)
     
     st.divider()
-    st.header("2. Optimization Strategy")
+    st.header("2. Packing Strategy")
     packing_mode = st.radio(
-        "Select Packing Mode:",
+        "Choose Mode:",
         ["Individual (Pure Cartons)", "Mixed (Consolidated Cartons)"],
-        help="Individual: One SKU per box. Mixed: Multiple SKUs allowed per box."
+        help="Individual: One SKU type per box. Mixed: Multiple SKUs combined to save space."
     )
 
-# --- INPUT DATA ---
-st.subheader("Part Manifest")
-default_data = pd.DataFrame([
-    {"Part ID": "SKU-001", "L": 200, "W": 150, "H": 100, "Weight": 1.5, "Qty": 20},
-    {"Part ID": "SKU-002", "L": 100, "W": 100, "H": 50, "Weight": 0.5, "Qty": 50}
-])
-edited_df = st.data_editor(default_data, num_rows="dynamic", use_container_width=True)
+# --- MAIN: FILE UPLOAD ---
+st.subheader("Step 1: Upload Part Data")
+uploaded_file = st.file_uploader("Upload CSV or Excel (Headers: Part ID, L, W, H, Weight, Qty)", type=['csv', 'xlsx'])
 
-if st.button("🚀 Execute Packing Analysis"):
-    engine = PackagingEngine(lb, wb, hb, max_box_weight, clearance)
-    parts_list = edited_df.to_dict('records')
+# Provide a sample template for the user
+sample_data = "Part ID,L,W,H,Weight,Qty\nSKU-001,200,150,100,1.5,50\nSKU-002,100,100,50,0.5,100"
+st.download_button("📥 Download Sample Template", sample_data, "template.csv", "text/csv")
 
-    if packing_mode == "Individual (Pure Cartons)":
-        st.subheader("Results: Individual SKU Packing")
-        results = []
-        for p in parts_list:
-            fit_per_box, layout, ori = engine.get_max_parts_single_sku(p['L'], p['W'], p['H'], p['Weight'])
-            
-            if fit_per_box > 0:
-                boxes_needed = math.ceil(p['Qty'] / fit_per_box)
-                util = ((p['L']*p['W']*p['H']*fit_per_box)/(engine.box_vol))*100
-                results.append({
-                    "Part ID": p['Part ID'],
-                    "Units/Box": fit_per_box,
-                    "Total Boxes": boxes_needed,
-                    "Layout": layout,
-                    "Orientation": ori,
-                    "Space Util %": round(util, 2),
-                    "Status": "FIT"
-                })
-            else:
-                results.append({"Part ID": p['Part ID'], "Status": "OVERSIZE", "Total Boxes": 0})
-        
-        res_df = pd.DataFrame(results)
-        st.dataframe(res_df, use_container_width=True)
-        st.metric("Total Boxes Required", int(res_df["Total Boxes"].sum()))
-
+if uploaded_file:
+    # Load Data
+    if uploaded_file.name.endswith('.csv'):
+        df = pd.read_csv(uploaded_file)
     else:
-        # MIXED PACKING MODE
-        st.subheader("Results: Mixed SKU Packing")
-        packed_boxes = engine.run_mixed_packing(parts_list)
+        df = pd.read_excel(uploaded_file)
+    
+    st.write("### Data Preview", df.head())
+    
+    if st.button("🚀 Run Packaging Optimization"):
+        engine = PackagingEngine(lb, wb, hb, max_box_weight, clearance)
+        parts_list = df.to_dict('records')
         
-        col1, col2 = st.columns(2)
-        col1.metric("Total Boxes Required", len(packed_boxes))
-        
-        for i, box in enumerate(packed_boxes):
-            with st.expander(f"📦 Box {i+1} Contents", expanded=(i==0)):
-                box_df = pd.DataFrame(box)
-                summary = box_df.groupby('id').size().reset_index(name='Qty')
+        # --- EXECUTION ---
+        if packing_mode == "Individual (Pure Cartons)":
+            st.subheader("Optimization Results: Individual SKU Packing")
+            results = []
+            for p in parts_list:
+                fit_per_box, layout, ori = engine.get_max_parts_single_sku(p['L'], p['W'], p['H'], p['Weight'])
                 
-                c1, c2 = st.columns(2)
-                c1.write("**Inventory:**")
-                c1.table(summary)
-                
-                used_w = box_df['weight'].sum()
-                used_v = box_df['vol'].sum()
-                c2.write("**Box Metrics:**")
-                c2.write(f"Weight: {round(used_w,1)} / {max_box_weight} kg")
-                c2.write(f"Volume: {round((used_v/engine.box_vol)*100,1)}% utilized")
-                c2.progress(min(used_w/max_box_weight, 1.0))
+                if fit_per_box > 0:
+                    total_boxes = math.ceil(p['Qty'] / fit_per_box)
+                    vol_util = ((p['L']*p['W']*p['H']*fit_per_box) / engine.box_vol) * 100
+                    results.append({
+                        "Part ID": p['Part ID'],
+                        "Fit per Box": fit_per_box,
+                        "Total Boxes": total_boxes,
+                        "Layout": layout,
+                        "Orientation": ori,
+                        "Utilization %": round(vol_util, 2),
+                        "Status": "FIT"
+                    })
+                else:
+                    results.append({"Part ID": p['Part ID'], "Status": "OVERSIZE", "Total Boxes": 0})
+            
+            res_df = pd.DataFrame(results)
+            st.dataframe(res_df, use_container_width=True)
+            
+            st.metric("Total Shipping Boxes Required", int(res_df["Total Boxes"].sum()))
+            
+            # Export
+            csv = res_df.to_csv(index=False).encode('utf-8')
+            st.download_button("📥 Download Result", csv, "individual_packing.csv", "text/csv")
+
+        else:
+            # MIXED PACKING MODE
+            st.subheader("Optimization Results: Mixed SKU Packing")
+            packed_boxes = engine.run_mixed_packing(parts_list)
+            
+            st.metric("Total Consolidated Boxes Required", len(packed_boxes))
+            
+            # Detailed breakdown per box
+            export_rows = []
+            for i, box in enumerate(packed_boxes):
+                with st.expander(f"📦 Box {i+1} Details"):
+                    box_df = pd.DataFrame(box)
+                    summary = box_df.groupby('Part ID').size().reset_index(name='Qty Packed')
+                    
+                    c1, c2 = st.columns(2)
+                    c1.write("**Packing List:**")
+                    c1.table(summary)
+                    
+                    wt = box_df['Weight'].sum()
+                    vol_u = (box_df['vol'].sum() / engine.box_vol) * 100
+                    c2.metric("Box Weight", f"{round(wt, 2)} kg")
+                    c2.metric("Box Utilization", f"{round(vol_u, 1)}%")
+                    c2.progress(min(wt/max_box_weight, 1.0))
+                    
+                    # Prepare for export
+                    summary['Box_ID'] = i + 1
+                    export_rows.append(summary)
+            
+            if export_rows:
+                final_export = pd.concat(export_rows)
+                csv = final_export.to_csv(index=False).encode('utf-8')
+                st.download_button("📥 Download Packing Manifest", csv, "mixed_manifest.csv", "text/csv")
+
+else:
+    st.info("Waiting for file upload to begin optimization.")
