@@ -3,123 +3,141 @@ import pandas as pd
 import math
 from itertools import permutations
 
-def calculate_packing():
-    st.set_page_config(page_title="Packaging Optimization Engine", layout="wide")
+# --- CORE CALCULATION ENGINE ---
+def optimize_packing(lp, wp, hp, part_weight, lb, wb, hb, max_box_weight, clearance):
+    # Adjust box dimensions for clearance
+    eff_lb, eff_wb, eff_hb = lb - clearance, wb - clearance, hb - clearance
     
-    st.title("📦 Supply Chain Packaging Optimization Engine")
-    st.markdown("### 3D Box Packing & Orientation Analysis")
-
-    # --- Sidebar Inputs ---
-    st.sidebar.header("1. Part Dimensions (mm)")
-    lp = st.sidebar.number_input("Part Length (Lp)", min_value=1.0, value=120.0)
-    wp = st.sidebar.number_input("Part Width (Wp)", min_value=1.0, value=80.0)
-    hp = st.sidebar.number_input("Part Height (Hp)", min_value=1.0, value=50.0)
-    part_weight = st.sidebar.number_input("Part Weight (kg)", min_value=0.0, value=0.5)
-
-    st.sidebar.header("2. Box Dimensions (mm)")
-    lb = st.sidebar.number_input("Box Length (Lb)", min_value=1.0, value=400.0)
-    wb = st.sidebar.number_input("Box Width (Wb)", min_value=1.0, value=300.0)
-    hb = st.sidebar.number_input("Box Height (Hb)", min_value=1.0, value=250.0)
-    max_weight = st.sidebar.number_input("Max Box Weight (kg)", min_value=0.0, value=20.0)
-
-    st.sidebar.header("3. Constraints")
-    clearance = st.sidebar.number_input("Clearance Tolerance (mm)", min_value=0.0, value=5.0)
-    
-    # --- Logic Engine ---
-    
-    # Effective box dimensions after clearance
-    eff_lb = lb - clearance
-    eff_wb = wb - clearance
-    eff_hb = hb - clearance
+    if any(d <= 0 for d in [eff_lb, eff_wb, eff_hb]):
+        return None
 
     part_dims = [lp, wp, hp]
-    # All 6 possible orientations (permutations)
     orientations = list(set(permutations(part_dims)))
     
-    results = []
+    best_result = None
+    max_parts = -1
 
     for orientation in orientations:
         pl, pw, ph = orientation
         
-        # Calculate parts per axis
+        # Calculate max units per dimension
         nx = math.floor(eff_lb / pl) if eff_lb >= pl else 0
         ny = math.floor(eff_wb / pw) if eff_wb >= pw else 0
         nz = math.floor(eff_hb / ph) if eff_hb >= ph else 0
         
         total_parts = nx * ny * nz
         
-        # Weight constraint check
-        total_weight = total_parts * part_weight
-        if total_weight > max_weight and part_weight > 0:
-            total_parts = math.floor(max_weight / part_weight)
-            weight_limited = True
-        else:
-            weight_limited = False
+        # Weight Constraint Check
+        if part_weight > 0 and (total_parts * part_weight) > max_box_weight:
+            total_parts = math.floor(max_box_weight / part_weight)
+        
+        # Volume Calculation
+        box_vol = lb * wb * hb
+        part_vol = lp * wp * hp
+        utilization = ((total_parts * part_vol) / box_vol) * 100 if box_vol > 0 else 0
 
-        # Determine Direction Label
-        # Logic: Which part dimension is aligned with Box Length?
+        # Determine Primary Direction
         if pl == lp: direction = "Lengthwise"
         elif pl == wp: direction = "Breadthwise"
         else: direction = "Heightwise"
 
-        # Volume Calculations
-        box_vol = lb * wb * hb
-        part_vol = lp * wp * hp
-        utilized_vol = total_parts * part_vol
-        utilization_pct = (utilized_vol / box_vol) * 100 if box_vol > 0 else 0
+        if total_parts > max_parts:
+            max_parts = total_parts
+            best_result = {
+                "Best Direction": direction,
+                "Orientation": f"{pl}x{pw}x{ph}",
+                "Parts per Box": total_parts,
+                "Layout (LxWxH)": f"{nx} x {ny} x {nz}",
+                "Utilization %": round(utilization, 2),
+                "Fit Status": "FIT" if total_parts > 0 else "NO FIT"
+            }
+            
+    return best_result
 
-        results.append({
-            "Orientation (L x W x H)": f"{pl} × {pw} × {ph}",
-            "Direction": direction,
-            "Parts": total_parts,
-            "Layout": f"{nx} × {ny} × {nz}",
-            "Utilization (%)": round(utilization_pct, 2),
-            "Unused Vol (%)": round(100 - utilization_pct, 2),
-            "Weight (kg)": round(total_parts * part_weight, 2),
-            "Weight Limited": weight_limited
-        })
+# --- STREAMLIT UI ---
+st.set_page_config(page_title="Multi-Part Packaging Engine", layout="wide")
 
-    # Convert to Dataframe
-    df = pd.DataFrame(results)
-    df = df.sort_values(by="Parts", ascending=False).reset_index(drop=True)
+st.title("📦 Multi-Part Packaging Optimization Engine")
+st.markdown("Enter multiple part types below to calculate optimal box density for each.")
 
-    # --- Output Display ---
-    if not df.empty and df.iloc[0]['Parts'] > 0:
-        best = df.iloc[0]
+# --- SIDEBAR: GLOBAL BOX SETTINGS ---
+st.sidebar.header("Global Box Dimensions")
+lb = st.sidebar.number_input("Box Length (mm)", value=600.0)
+wb = st.sidebar.number_input("Box Width (mm)", value=400.0)
+hb = st.sidebar.number_input("Box Height (mm)", value=400.0)
+max_box_weight = st.sidebar.number_input("Max Weight Capacity (kg)", value=25.0)
+clearance = st.sidebar.number_input("Clearance Tolerance (mm)", value=5.0)
+
+# --- MAIN: MULTI-PART INPUT ---
+st.subheader("1. Define Part Manifest")
+st.info("Edit the table below. Add rows for different part types.")
+
+# Default data for the editor
+default_parts = pd.DataFrame([
+    {"Part ID": "P-001", "Length": 120.0, "Width": 80.0, "Height": 50.0, "Weight": 0.5},
+    {"Part ID": "P-002", "Length": 200.0, "Width": 150.0, "Height": 100.0, "Weight": 2.0},
+    {"Part ID": "P-003", "Length": 500.0, "Width": 300.0, "Height": 100.0, "Weight": 5.0},
+])
+
+# Interactive Data Editor
+edited_df = st.data_editor(
+    default_parts, 
+    num_rows="dynamic", 
+    use_container_width=True,
+    column_config={
+        "Part ID": st.column_config.TextColumn("Part ID", required=True),
+        "Length": st.column_config.NumberColumn("L (mm)", min_value=1),
+        "Width": st.column_config.NumberColumn("W (mm)", min_value=1),
+        "Height": st.column_config.NumberColumn("H (mm)", min_value=1),
+        "Weight": st.column_config.NumberColumn("Weight (kg)", min_value=0),
+    }
+)
+
+# --- CALCULATION TRIGGER ---
+if st.button("🚀 Run Batch Optimization"):
+    results_list = []
+    
+    for index, row in edited_df.iterrows():
+        res = optimize_packing(
+            row['Length'], row['Width'], row['Height'], row['Weight'],
+            lb, wb, hb, max_box_weight, clearance
+        )
         
-        # Key Metrics
-        col1, col2, col3, col4 = st.columns(4)
-        col1.metric("Best Orientation", best['Direction'])
-        col2.metric("Max Parts", int(best['Parts']))
-        col3.metric("Utilization", f"{best['Utilization (%)']}%")
-        col4.metric("Fit Status", "FIT", delta_color="normal")
+        if res:
+            res['Part ID'] = row['Part ID']
+            results_list.append(res)
+        else:
+            results_list.append({
+                "Part ID": row['Part ID'], 
+                "Fit Status": "ERROR/INVALID DIMS",
+                "Parts per Box": 0
+            })
 
-        st.success(f"✅ Optimization Complete: Found best layout using **{best['Direction']}** orientation.")
+    # --- DISPLAY RESULTS ---
+    res_df = pd.DataFrame(results_list)
+    
+    # Reorder columns to put Part ID first
+    cols = ['Part ID'] + [c for c in res_df.columns if c != 'Part ID']
+    res_df = res_df[cols]
 
-        # Detailed Summary
-        with st.expander("View Full Analysis Details", expanded=True):
-            c1, c2 = st.columns(2)
-            with c1:
-                st.write("**Packing Specifications:**")
-                st.write(f"- Layout: {best['Layout']} (L×W×H pieces)")
-                st.write(f"- Total Weight: {best['Weight (kg)']} kg / {max_weight} kg")
-                if best['Weight Limited']:
-                    st.warning("⚠️ Part count is limited by maximum box weight capacity.")
-            with c2:
-                st.write("**Volume Metrics:**")
-                st.write(f"- Unused Volume: {best['Unused Vol (%)']}%")
-                st.write(f"- Orientation: {best['Orientation (L x W x H)']} mm")
+    st.subheader("2. Optimization Results")
+    
+    # Summary Metrics
+    avg_util = res_df[res_df["Fit Status"] == "FIT"]["Utilization %"].mean()
+    st.metric("Average Box Utilization", f"{round(avg_util, 2)}%" if not math.isnan(avg_util) else "0%")
 
-        # Comparison Table
-        st.subheader("Orientation Comparison Matrix")
-        st.dataframe(df, use_container_width=True)
+    # Styled Result Table
+    def color_status(val):
+        color = 'green' if val == "FIT" else 'red'
+        return f'color: {color}'
 
-    else:
-        st.error("❌ NO FIT: Part dimensions exceed box dimensions or weight limits.")
+    st.dataframe(res_df.style.applymap(color_status, subset=['Fit Status']), use_container_width=True)
 
-    # --- Recommendations ---
-    if not df.empty and df.iloc[0]['Utilization (%)'] < 70:
-        st.info("💡 **Engine Recommendation:** Space utilization is below 70%. Consider reducing box size or changing part orientation to minimize shipping costs.")
+    # Export functionality
+    csv = res_df.to_csv(index=False).encode('utf-8')
+    st.download_button("📥 Download Results as CSV", csv, "packing_results.csv", "text/csv")
 
-if __name__ == "__main__":
-    calculate_packing()
+    # Flag low efficiency
+    low_eff = res_df[(res_df["Utilization %"] < 50) & (res_df["Fit Status"] == "FIT")]
+    if not low_eff.empty:
+        st.warning(f"⚠️ Warning: {len(low_eff)} part types have space utilization below 50%. Consider alternative packaging for these items.")
