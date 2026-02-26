@@ -77,7 +77,7 @@ def calculate_fit(box_dim, part_dim, nested, nest_pct, stacking, fragile):
     return best_info
 
 # --- UI Layout ---
-st.title("📦 AgiloPack – Step-Wise Process Flow")
+st.title("📦 AgiloPack 2")
 
 # --- STEP 1: BOX ---
 if st.session_state.step == 1:
