@@ -171,7 +171,7 @@ elif st.session_state.step == 5:
             )
             results.append({
                 "Part Name": row['Part_Name'],
-                "Box Size (WxLxH)": f"{box[0]}x{box[1]}x{box[2]}",
+                "Box Size": f"{box[0]}x{box[1]}x{box[2]}",
                 "Parts Per Box": res['count'],
                 "Best Orientation": res['orientation'],
                 "Used Volume": res['used_vol'],
@@ -182,22 +182,29 @@ elif st.session_state.step == 5:
         res_df = pd.DataFrame(results)
         st.dataframe(res_df, use_container_width=True)
         
-        # --- Excel Download Logic ---
         st.divider()
         st.subheader("Export Analysis")
-        
-        # Create an in-memory buffer
-        buffer = io.BytesIO()
-        
-        # Write the dataframe to the buffer using ExcelWriter
-        with pd.ExcelWriter(buffer, engine='xlsxwriter') as writer:
-            res_df.to_excel(writer, index=False, sheet_name='Pack_Analysis')
-            # The writer is automatically saved when leaving the 'with' block
-            
+
+        # --- EXCEL DOWNLOAD FIX ---
+        def to_excel(df):
+            output = io.BytesIO()
+            # Using xlsxwriter engine is critical for .xlsx format
+            with pd.ExcelWriter(output, engine='xlsxwriter') as writer:
+                df.to_excel(writer, index=False, sheet_name='AgiloPack_Results')
+                # Formatting (Optional: Autofit columns)
+                worksheet = writer.sheets['AgiloPack_Results']
+                for i, col in enumerate(df.columns):
+                    column_len = max(df[col].astype(str).str.len().max(), len(col)) + 2
+                    worksheet.set_column(i, i, column_len)
+            return output.getvalue()
+
+        # Generate the binary data
+        excel_data = to_excel(res_df)
+
         st.download_button(
             label="Download as Excel (.xlsx) 📥",
-            data=buffer.getvalue(),
-            file_name='AgiloPack_Analysis_Results.xlsx',
+            data=excel_data,
+            file_name='AgiloPack_Analysis.xlsx',
             mime='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
         )
         
