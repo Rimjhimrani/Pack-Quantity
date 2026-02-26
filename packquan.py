@@ -24,8 +24,9 @@ def reset_process():
 
 # --- Calculation Engine ---
 def calculate_fit(box_dim, part_dim, nested, nest_pct, stacking, fragile):
-    bw, bl, bh = box_dim
-    # Original indices: 0: Width, 1: Length, 2: Height
+    # Unpacking box dimensions (Length, Width, Height)
+    bl, bw, bh = box_dim
+    # Original indices for parts: 0: Width, 1: Length, 2: Height
     p_dims = [part_dim[0], part_dim[1], part_dim[2]]
     # Mapping for placement logic
     labels = {0: "Breadthwise", 1: "Lengthwise", 2: "Heightwise"}
@@ -64,7 +65,7 @@ def calculate_fit(box_dim, part_dim, nested, nest_pct, stacking, fragile):
             best_info = {
                 "count": best_count,
                 "dims": f"{ow}x{ol}x{oh}",
-                "orientation_label": labels[idx[2]], # Based on what is vertical
+                "orientation_label": labels[idx[2]], 
                 "used_vol": round(best_count * (p_dims[0] * p_dims[1] * p_dims[2]), 2)
             }
 
@@ -82,15 +83,29 @@ st.title("📦 AgiloPack – Step-Wise Process Flow")
 if st.session_state.step == 1:
     st.header("Step 1: Select Box Size")
     box_type = st.radio("Choose Source:", ["Predefined Options", "Enter Custom Dimensions"])
+    
+    # Updated Predefined Boxes from the Table
+    PREDEFINED_BOXES = {
+        "Option A (120x80x80)": (120, 80, 80),
+        "Option B (200x180x120)": (200, 180, 120),
+        "Option C (360x360x100)": (360, 360, 100),
+        "Option D (400x300x220)": (400, 300, 220),
+        "Option E (600x500x400)": (600, 500, 400),
+        "Option F (850x400x250)": (850, 400, 250),
+        "Option G (1200x1000x250)": (1200, 1000, 250),
+        "Option H (1500x1200x1000)": (1500, 1200, 1000),
+        "Option i (1500x1200x1000)": (1500, 1200, 1000),
+    }
+
     if box_type == "Predefined Options":
-        option = st.selectbox("Standard Boxes:", ["Small (20x20x20)", "Medium (40x40x40)", "Large (60x60x60)"])
-        dims = {"Small (20x20x20)": (20,20,20), "Medium (40x40x40)": (40,40,40), "Large (60x60x60)": (60,60,60)}
-        st.session_state.data['box'] = dims[option]
+        option = st.selectbox("Standard Boxes (Length x Width x Height):", list(PREDEFINED_BOXES.keys()))
+        st.session_state.data['box'] = PREDEFINED_BOXES[option]
     else:
         c1, c2, c3 = st.columns(3)
+        # Order aligned with the table: Length, Width, Height
         st.session_state.data['box'] = (
-            c1.number_input("Box Width", min_value=1.0, value=50.0),
-            c2.number_input("Box Length", min_value=1.0, value=50.0),
+            c1.number_input("Box Length", min_value=1.0, value=50.0),
+            c2.number_input("Box Width", min_value=1.0, value=50.0),
             c3.number_input("Box Height", min_value=1.0, value=50.0)
         )
     st.button("Next ➡️", on_click=next_step)
@@ -161,7 +176,6 @@ elif st.session_state.step == 5:
     res_df = pd.DataFrame(results)
     st.dataframe(res_df, use_container_width=True)
 
-    # --- Excel Download Logic (XLSX Format Only) ---
     output = io.BytesIO()
     with pd.ExcelWriter(output, engine='xlsxwriter') as writer:
         res_df.to_excel(writer, index=False, sheet_name='AgiloPack_Results')
