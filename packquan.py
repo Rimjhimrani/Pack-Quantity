@@ -21,8 +21,7 @@ html, body, [class*="css"] {
 .stApp [data-testid="stMarkdownContainer"] li,
 .stApp [data-testid="stMarkdownContainer"] strong,
 .stApp [data-testid="stWidgetLabel"] p,
-.stApp [data-testid="stFileUploader"] span,
-.stApp [data-testid="stFileUploader"] p,
+
 .stApp [data-baseweb="radio"] span,
 .stApp [data-baseweb="checkbox"] span {
     color: #ffffff !important;
@@ -342,6 +341,14 @@ label, .stRadio label, .stCheckbox label {
     border: none;
     border-top: 1px solid rgba(255,255,255,0.06);
     margin: 1.5rem 0;
+}
+
+/* File uploader has light background - keep text dark */
+[data-testid="stFileUploader"] span,
+[data-testid="stFileUploader"] p,
+[data-testid="stFileUploader"] button,
+[data-testid="stFileUploader"] small {
+    color: #1a1a1a !important;
 }
 
 /* Upload area */
