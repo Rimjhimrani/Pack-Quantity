@@ -27,14 +27,12 @@ def calculate_fit(box_dim, part_dim, nested, nest_pct, stacking, fragile):
     bw, bl, bh = box_dim
     pw, pl, ph = part_dim
     
-    # Generate orientations
     orientations = list(set(itertools.permutations([pw, pl, ph])))
     best_count = 0
     best_orient = None
     
     for orient in orientations:
         ow, ol, oh = orient
-        # Rule: Fragile parts must stay upright (original height must remain vertical)
         if fragile == "Fragile" and oh != ph:
             continue
             
@@ -49,7 +47,6 @@ def calculate_fit(box_dim, part_dim, nested, nest_pct, stacking, fragile):
         else:
             if nested:
                 increment = oh * (nest_pct / 100)
-                # Formula: H_total = H_base + (n-1)*increment <= Box_H
                 layers = 1 + int((bh - oh) // increment) if (bh >= oh and increment > 0) else 1
                 total_parts = per_layer * max(1, layers)
             else:
@@ -151,7 +148,7 @@ elif st.session_state.step == 4:
     
     st.button("Generate Results 🚀", on_click=next_step)
 
-# --- STEP 5: FINAL RESULTS & DOWNLOAD ---
+# --- STEP 5: FINAL RESULTS & EXCEL DOWNLOAD ---
 elif st.session_state.step == 5:
     st.header("Final Results & Space Utilization")
     
@@ -185,20 +182,23 @@ elif st.session_state.step == 5:
         res_df = pd.DataFrame(results)
         st.dataframe(res_df, use_container_width=True)
         
-        # --- Download Logic ---
+        # --- Excel Download Logic ---
         st.divider()
         st.subheader("Export Analysis")
         
-        # Convert dataframe to CSV
-        csv = res_df.to_csv(index=False).encode('utf-8')
+        # Create an in-memory buffer
+        buffer = io.BytesIO()
         
-        c1, c2 = st.columns([1, 5])
-        with c1:
-            st.download_button(
-                label="Download as CSV ⬇️",
-                data=csv,
-                file_name='AgiloPack_Results.csv',
-                mime='text/csv',
-            )
-        with c2:
-            st.button("Start New Process 🔄", on_click=reset_process)
+        # Write the dataframe to the buffer using ExcelWriter
+        with pd.ExcelWriter(buffer, engine='xlsxwriter') as writer:
+            res_df.to_excel(writer, index=False, sheet_name='Pack_Analysis')
+            # The writer is automatically saved when leaving the 'with' block
+            
+        st.download_button(
+            label="Download as Excel (.xlsx) 📥",
+            data=buffer.getvalue(),
+            file_name='AgiloPack_Analysis_Results.xlsx',
+            mime='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+        )
+        
+        st.button("Start New Process 🔄", on_click=reset_process)
