@@ -10,13 +10,16 @@ if 'step' not in st.session_state:
     st.session_state.step = 1
 if 'data' not in st.session_state:
     st.session_state.data = {}
+if 'mapping_confirmed' not in st.session_state:
+    st.session_state.mapping_confirmed = False
 
 def next_step():
     st.session_state.step += 1
 
 def reset_process():
-    st.session_state.step = 1
-    st.session_state.data = {}
+    for key in list(st.session_state.keys()):
+        del st.session_state[key]
+    st.rerun()
 
 # --- Calculation Engine ---
 def calculate_fit(box_dim, part_dim, nested, nest_pct, stacking, fragile):
@@ -30,6 +33,7 @@ def calculate_fit(box_dim, part_dim, nested, nest_pct, stacking, fragile):
     
     for orient in orientations:
         ow, ol, oh = orient
+        # Rule: Fragile parts must stay upright (height is height)
         if fragile == "Fragile" and oh != ph:
             continue
             
@@ -37,14 +41,15 @@ def calculate_fit(box_dim, part_dim, nested, nest_pct, stacking, fragile):
         rows = bl // ol
         per_layer = cols * rows
         
-        if per_layer == 0: continue
+        if per_layer <= 0: continue
             
         if not stacking:
             total_parts = per_layer
         else:
             if nested:
                 increment = oh * (nest_pct / 100)
-                layers = 1 + int((bh - oh) // increment) if increment > 0 else 1
+                # First part full height, others only the nested increment
+                layers = 1 + int((bh - oh) // increment) if (bh >= oh and increment > 0) else 1
                 total_parts = per_layer * max(1, layers)
             else:
                 layers = bh // oh
@@ -63,14 +68,13 @@ def calculate_fit(box_dim, part_dim, nested, nest_pct, stacking, fragile):
         "count": best_count,
         "orientation": best_orient,
         "used_vol": used_volume,
-        "unused_vol": box_volume - used_volume,
         "util_pct": round(utilization, 2)
     }
 
 # --- UI Layout ---
 st.title("📦 AgiloPack – Step-Wise Process Flow")
 
-# --- Step 1: Box Dimensions ---
+# --- STEP 1: BOX SELECTION ---
 if st.session_state.step == 1:
     st.header("Step 1: Select Box Size")
     box_type = st.radio("Choose Source:", ["Predefined Options", "Enter Custom Dimensions"])
@@ -88,48 +92,56 @@ if st.session_state.step == 1:
     
     st.button("Next ➡️", on_click=next_step)
 
-# --- Step 2: Part Data Upload & Column Mapping ---
+# --- STEP 2: DATA UPLOAD & EXPLICIT MAPPING ---
 elif st.session_state.step == 2:
-    st.header("Step 2: Upload Part Data")
+    st.header("Step 2: Upload & Map Part Data")
     uploaded_file = st.file_uploader("Upload CSV or Excel", type=["csv", "xlsx"])
     
     if uploaded_file:
-        df = pd.read_csv(uploaded_file) if uploaded_file.name.endswith('.csv') else pd.read_excel(uploaded_file)
+        # Load raw data only once
+        if 'raw_df' not in st.session_state:
+            if uploaded_file.name.endswith('.csv'):
+                st.session_state.raw_df = pd.read_csv(uploaded_file)
+            else:
+                st.session_state.raw_df = pd.read_excel(uploaded_file)
         
-        st.write("### Map Your Columns")
-        st.info("Match the required fields to your file columns to avoid errors.")
-        
+        df = st.session_state.raw_df
         col_names = df.columns.tolist()
         
+        st.info("Select the columns from your file that correspond to the fields below:")
         c1, c2, c3, c4 = st.columns(4)
-        name_col = c1.selectbox("Part Name Column", col_names)
-        w_col = c2.selectbox("Width Column", col_names)
-        l_col = c3.selectbox("Length Column", col_names)
-        h_col = c4.selectbox("Height Column", col_names)
+        n_col = c1.selectbox("Part Name", col_names)
+        w_col = c2.selectbox("Width", col_names)
+        l_col = c3.selectbox("Length", col_names)
+        h_col = c4.selectbox("Height", col_names)
         
-        # Clean up the dataframe to only use selected columns and rename them
-        final_df = df[[name_col, w_col, l_col, h_col]].copy()
-        final_df.columns = ['Part_Name', 'Width', 'Length', 'Height']
-        
-        st.session_state.data['parts_df'] = final_df
-        st.success("Columns mapped successfully!")
-        st.dataframe(final_df.head())
-        
-        st.button("Next ➡️", on_click=next_step)
+        if st.button("Confirm & Map Columns ✅"):
+            # Create a standardized dataframe and save it to session state
+            mapped_df = df[[n_col, w_col, l_col, h_col]].copy()
+            mapped_df.columns = ['Part_Name', 'Width', 'Length', 'Height']
+            # Ensure numbers are floats
+            for col in ['Width', 'Length', 'Height']:
+                mapped_df[col] = pd.to_numeric(mapped_df[col], errors='coerce').fillna(0)
+            
+            st.session_state.data['parts_df'] = mapped_df
+            st.session_state.mapping_confirmed = True
+            st.success("Data Mapped Successfully!")
+            st.dataframe(mapped_df.head())
 
-# --- Step 3: Nesting Logic ---
+        if st.session_state.mapping_confirmed:
+            st.button("Next ➡️", on_click=next_step)
+
+# --- STEP 3: NESTING ---
 elif st.session_state.step == 3:
     st.header("Step 3: Nesting Configuration")
     is_nested = st.checkbox("Will parts be nested?")
-    nest_pct = 0
-    if is_nested:
-        nest_pct = st.slider("Define Nesting Height Percentage (%)", 1, 100, 20)
+    nest_pct = st.slider("Define Nesting Height Percentage (%)", 1, 100, 20) if is_nested else 0
     
     st.session_state.data['nested'] = is_nested
     st.session_state.data['nest_pct'] = nest_pct
     st.button("Next ➡️", on_click=next_step)
 
-# --- Step 4: Handling Rules ---
+# --- STEP 4: RULES ---
 elif st.session_state.step == 4:
     st.header("Step 4: Handling Rules")
     stacking = st.radio("Is stacking allowed?", ["Yes", "No"]) == "Yes"
@@ -138,42 +150,40 @@ elif st.session_state.step == 4:
     st.session_state.data['stacking'] = stacking
     st.session_state.data['fragility'] = fragility
     
-    if st.button("Generate Results 🚀"):
-        next_step()
+    st.button("Generate Results 🚀", on_click=next_step)
 
-# --- Step 5: Final Results ---
+# --- STEP 5: FINAL RESULTS ---
 elif st.session_state.step == 5:
     st.header("Final Results & Space Utilization")
     
-    box = st.session_state.data['box']
-    df = st.session_state.data['parts_df']
-    results = []
-    
-    # Using the standardized names from Step 2
-    for _, row in df.iterrows():
-        part_dim = (float(row['Width']), float(row['Length']), float(row['Height']))
-        res = calculate_fit(
-            box, 
-            part_dim, 
-            st.session_state.data['nested'],
-            st.session_state.data['nest_pct'],
-            st.session_state.data['stacking'],
-            st.session_state.data['fragility']
-        )
-        results.append({
-            "Part Name": row['Part_Name'],
-            "Parts Per Box": res['count'],
-            "Orientation (W,L,H)": str(res['orientation']),
-            "Used Vol": res['used_vol'],
-            "Utilization (%)": res['util_pct']
-        })
-    
-    res_df = pd.DataFrame(results)
-    st.dataframe(res_df, use_container_width=True)
-    
-    m1, m2, m3 = st.columns(3)
-    m1.metric("Avg. Utilization", f"{res_df['Utilization (%)'].mean():.1f}%")
-    m2.metric("Total Box Volume", f"{box[0]*box[1]*box[2]:,}")
-    m3.metric("Total Parts Analyzed", len(res_df))
-
-    st.button("Start New Process 🔄", on_click=reset_process)
+    # Validation check to prevent KeyError
+    if 'parts_df' not in st.session_state.data:
+        st.error("Data missing. Please restart the process.")
+        if st.button("Restart"): reset_process()
+    else:
+        box = st.session_state.data['box']
+        df = st.session_state.data['parts_df']
+        
+        results = []
+        for _, row in df.iterrows():
+            # Robust extraction of columns
+            res = calculate_fit(
+                box, 
+                (row['Width'], row['Length'], row['Height']), 
+                st.session_state.data['nested'],
+                st.session_state.data['nest_pct'],
+                st.session_state.data['stacking'],
+                st.session_state.data['fragility']
+            )
+            results.append({
+                "Part Name": row['Part_Name'],
+                "Parts Per Box": res['count'],
+                "Best Orientation (W,L,H)": str(res['orientation']),
+                "Utilization (%)": res['util_pct']
+            })
+        
+        res_df = pd.DataFrame(results)
+        st.table(res_df) # Table is clearer for results
+        
+        st.divider()
+        st.button("Start New Process 🔄", on_click=reset_process)
