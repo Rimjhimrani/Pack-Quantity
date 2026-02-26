@@ -25,22 +25,21 @@ def reset_process():
 # --- Calculation Engine ---
 def calculate_fit(box_dim, part_dim, nested, nest_pct, stacking, fragile):
     bw, bl, bh = box_dim
-    # Indices: 0=Width, 1=Length, 2=Height
+    # Original indices: 0: Width, 1: Length, 2: Height
     p_dims = [part_dim[0], part_dim[1], part_dim[2]]
-    labels = ["Width", "Length", "Height"]
+    # Mapping for placement logic
+    labels = {0: "Breadthwise", 1: "Lengthwise", 2: "Heightwise"}
     
-    # We permute the indices (0,1,2) to keep track of which dim is which
     orient_indices = list(itertools.permutations([0, 1, 2]))
-    
     best_count = 0
-    best_info = {}
+    best_info = None
 
-    for indices in orient_indices:
-        # Map the permuted indices to actual values
-        ow, ol, oh = p_dims[indices[0]], p_dims[indices[1]], p_dims[indices[2]]
+    for idx in orient_indices:
+        # ow: width, ol: length, oh: vertical height in box
+        ow, ol, oh = p_dims[idx[0]], p_dims[idx[1]], p_dims[idx[2]]
         
-        # Fragility Rule: If fragile, original Height (index 2) must stay as oh
-        if fragile == "Fragile" and indices[2] != 2:
+        # Fragility Rule: If fragile, must be "Heightwise" (index 2 must be the vertical dimension)
+        if fragile == "Fragile" and idx[2] != 2:
             continue
             
         cols = bw // ow
@@ -62,27 +61,18 @@ def calculate_fit(box_dim, part_dim, nested, nest_pct, stacking, fragile):
                 
         if total_parts > best_count:
             best_count = int(total_parts)
-            # Find what is along the box length (ol)
-            placed_along_length = labels[indices[1]]
-            placed_along_width = labels[indices[0]]
-            
             best_info = {
                 "count": best_count,
-                "dims": f"{ow} x {ol} x {oh}",
-                "description": f"Part's {placed_along_length} along Box Length",
-                "ow": ow, "ol": ol, "oh": oh
+                "dims": f"{ow}x{ol}x{oh}",
+                "orientation_label": labels[idx[2]], # Based on what is vertical
+                "used_vol": round(best_count * (p_dims[0] * p_dims[1] * p_dims[2]), 2)
             }
 
-    if not best_info:
-        return None
+    if not best_info: return None
 
-    # Utilization
-    part_vol = p_dims[0] * p_dims[1] * p_dims[2]
     box_vol = bw * bl * bh
-    used_vol = best_count * part_vol
-    
-    best_info["util"] = round((used_vol / box_vol) * 100, 2)
-    best_info["unused_vol"] = round(box_vol - used_vol, 2)
+    best_info["util"] = round((best_info["used_vol"] / box_vol) * 100, 2)
+    best_info["unused_vol"] = round(box_vol - best_info["used_vol"], 2)
     return best_info
 
 # --- UI Layout ---
@@ -98,10 +88,11 @@ if st.session_state.step == 1:
         st.session_state.data['box'] = dims[option]
     else:
         c1, c2, c3 = st.columns(3)
-        bw = c1.number_input("Box Width", min_value=1.0, value=50.0)
-        bl = c2.number_input("Box Length", min_value=1.0, value=50.0)
-        bh = c3.number_input("Box Height", min_value=1.0, value=50.0)
-        st.session_state.data['box'] = (bw, bl, bh)
+        st.session_state.data['box'] = (
+            c1.number_input("Box Width", min_value=1.0, value=50.0),
+            c2.number_input("Box Length", min_value=1.0, value=50.0),
+            c3.number_input("Box Height", min_value=1.0, value=50.0)
+        )
     st.button("Next ➡️", on_click=next_step)
 
 # --- STEP 2: DATA MAPPING ---
@@ -114,10 +105,7 @@ elif st.session_state.step == 2:
         
         col_names = st.session_state.raw_df.columns.tolist()
         c1, c2, c3, c4 = st.columns(4)
-        n_col = c1.selectbox("Part Name", col_names)
-        w_col = c2.selectbox("Width", col_names)
-        l_col = c3.selectbox("Length", col_names)
-        h_col = c4.selectbox("Height", col_names)
+        n_col, w_col, l_col, h_col = c1.selectbox("Part Name", col_names), c2.selectbox("Width", col_names), c3.selectbox("Length", col_names), c4.selectbox("Height", col_names)
         
         if st.button("Confirm Mapping ✅"):
             mapped_df = st.session_state.raw_df[[n_col, w_col, l_col, h_col]].copy()
@@ -136,8 +124,7 @@ elif st.session_state.step == 3:
     st.header("Step 3: Nesting Configuration")
     is_nested = st.checkbox("Will parts be nested?")
     nest_pct = st.slider("Define Nesting Height Percentage (%)", 1, 100, 20) if is_nested else 0
-    st.session_state.data['nested'] = is_nested
-    st.session_state.data['nest_pct'] = nest_pct
+    st.session_state.data.update({'nested': is_nested, 'nest_pct': nest_pct})
     st.button("Next ➡️", on_click=next_step)
 
 # --- STEP 4: HANDLING ---
@@ -145,8 +132,7 @@ elif st.session_state.step == 4:
     st.header("Step 4: Handling Rules")
     stacking = st.radio("Is stacking allowed?", ["Yes", "No"]) == "Yes"
     fragility = st.selectbox("Fragility Status:", ["Non-Fragile", "Fragile"])
-    st.session_state.data['stacking'] = stacking
-    st.session_state.data['fragility'] = fragility
+    st.session_state.data.update({'stacking': stacking, 'fragility': fragility})
     st.button("Generate Results 🚀", on_click=next_step)
 
 # --- STEP 5: RESULTS & EXCEL ---
@@ -166,19 +152,19 @@ elif st.session_state.step == 5:
             results.append({
                 "Part Name": row['Part_Name'],
                 "Parts Per Box": res['count'],
-                "Best Orientation (WxLxH)": res['dims'],
-                "Placement Logic": res['description'],
+                "Best Orientation": res['dims'],
+                "Placement Orientation": res['orientation_label'],
                 "Utilization %": res['util'],
-                "Unused Volume": res['unused_vol']
+                "Unused Vol": res['unused_vol']
             })
 
     res_df = pd.DataFrame(results)
     st.dataframe(res_df, use_container_width=True)
 
-    # Excel Download Logic
+    # --- Excel Download Logic (XLSX Format Only) ---
     output = io.BytesIO()
     with pd.ExcelWriter(output, engine='xlsxwriter') as writer:
-        res_df.to_excel(writer, index=False, sheet_name='Pack_Analysis')
+        res_df.to_excel(writer, index=False, sheet_name='AgiloPack_Results')
     
     st.download_button(
         label="Download as Excel (.xlsx) 📥",
