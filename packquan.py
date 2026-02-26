@@ -1,6 +1,7 @@
 import streamlit as st
 import pandas as pd
 import itertools
+import io
 
 # --- Page Configuration ---
 st.set_page_config(page_title="AgiloPack - Space Utilization", layout="wide")
@@ -33,7 +34,7 @@ def calculate_fit(box_dim, part_dim, nested, nest_pct, stacking, fragile):
     
     for orient in orientations:
         ow, ol, oh = orient
-        # Rule: Fragile parts must stay upright (height is height)
+        # Rule: Fragile parts must stay upright (original height must remain vertical)
         if fragile == "Fragile" and oh != ph:
             continue
             
@@ -48,7 +49,7 @@ def calculate_fit(box_dim, part_dim, nested, nest_pct, stacking, fragile):
         else:
             if nested:
                 increment = oh * (nest_pct / 100)
-                # First part full height, others only the nested increment
+                # Formula: H_total = H_base + (n-1)*increment <= Box_H
                 layers = 1 + int((bh - oh) // increment) if (bh >= oh and increment > 0) else 1
                 total_parts = per_layer * max(1, layers)
             else:
@@ -66,8 +67,9 @@ def calculate_fit(box_dim, part_dim, nested, nest_pct, stacking, fragile):
     
     return {
         "count": best_count,
-        "orientation": best_orient,
-        "used_vol": used_volume,
+        "orientation": f"{best_orient[0]}x{best_orient[1]}x{best_orient[2]}" if best_orient else "N/A",
+        "used_vol": round(used_volume, 2),
+        "unused_vol": round(box_volume - used_volume, 2),
         "util_pct": round(utilization, 2)
     }
 
@@ -92,13 +94,12 @@ if st.session_state.step == 1:
     
     st.button("Next ➡️", on_click=next_step)
 
-# --- STEP 2: DATA UPLOAD & EXPLICIT MAPPING ---
+# --- STEP 2: DATA UPLOAD & MAPPING ---
 elif st.session_state.step == 2:
     st.header("Step 2: Upload & Map Part Data")
     uploaded_file = st.file_uploader("Upload CSV or Excel", type=["csv", "xlsx"])
     
     if uploaded_file:
-        # Load raw data only once
         if 'raw_df' not in st.session_state:
             if uploaded_file.name.endswith('.csv'):
                 st.session_state.raw_df = pd.read_csv(uploaded_file)
@@ -108,7 +109,7 @@ elif st.session_state.step == 2:
         df = st.session_state.raw_df
         col_names = df.columns.tolist()
         
-        st.info("Select the columns from your file that correspond to the fields below:")
+        st.info("Match your file columns to the required fields:")
         c1, c2, c3, c4 = st.columns(4)
         n_col = c1.selectbox("Part Name", col_names)
         w_col = c2.selectbox("Width", col_names)
@@ -116,19 +117,17 @@ elif st.session_state.step == 2:
         h_col = c4.selectbox("Height", col_names)
         
         if st.button("Confirm & Map Columns ✅"):
-            # Create a standardized dataframe and save it to session state
             mapped_df = df[[n_col, w_col, l_col, h_col]].copy()
             mapped_df.columns = ['Part_Name', 'Width', 'Length', 'Height']
-            # Ensure numbers are floats
             for col in ['Width', 'Length', 'Height']:
                 mapped_df[col] = pd.to_numeric(mapped_df[col], errors='coerce').fillna(0)
             
             st.session_state.data['parts_df'] = mapped_df
             st.session_state.mapping_confirmed = True
             st.success("Data Mapped Successfully!")
-            st.dataframe(mapped_df.head())
 
         if st.session_state.mapping_confirmed:
+            st.dataframe(st.session_state.data['parts_df'].head())
             st.button("Next ➡️", on_click=next_step)
 
 # --- STEP 3: NESTING ---
@@ -152,13 +151,12 @@ elif st.session_state.step == 4:
     
     st.button("Generate Results 🚀", on_click=next_step)
 
-# --- STEP 5: FINAL RESULTS ---
+# --- STEP 5: FINAL RESULTS & DOWNLOAD ---
 elif st.session_state.step == 5:
     st.header("Final Results & Space Utilization")
     
-    # Validation check to prevent KeyError
     if 'parts_df' not in st.session_state.data:
-        st.error("Data missing. Please restart the process.")
+        st.error("Data missing. Please restart.")
         if st.button("Restart"): reset_process()
     else:
         box = st.session_state.data['box']
@@ -166,7 +164,6 @@ elif st.session_state.step == 5:
         
         results = []
         for _, row in df.iterrows():
-            # Robust extraction of columns
             res = calculate_fit(
                 box, 
                 (row['Width'], row['Length'], row['Height']), 
@@ -177,13 +174,31 @@ elif st.session_state.step == 5:
             )
             results.append({
                 "Part Name": row['Part_Name'],
+                "Box Size (WxLxH)": f"{box[0]}x{box[1]}x{box[2]}",
                 "Parts Per Box": res['count'],
-                "Best Orientation (W,L,H)": str(res['orientation']),
-                "Utilization (%)": res['util_pct']
+                "Best Orientation": res['orientation'],
+                "Used Volume": res['used_vol'],
+                "Unused Volume": res['unused_vol'],
+                "Utilization %": res['util_pct']
             })
         
         res_df = pd.DataFrame(results)
-        st.table(res_df) # Table is clearer for results
+        st.dataframe(res_df, use_container_width=True)
         
+        # --- Download Logic ---
         st.divider()
-        st.button("Start New Process 🔄", on_click=reset_process)
+        st.subheader("Export Analysis")
+        
+        # Convert dataframe to CSV
+        csv = res_df.to_csv(index=False).encode('utf-8')
+        
+        c1, c2 = st.columns([1, 5])
+        with c1:
+            st.download_button(
+                label="Download as CSV ⬇️",
+                data=csv,
+                file_name='AgiloPack_Results.csv',
+                mime='text/csv',
+            )
+        with c2:
+            st.button("Start New Process 🔄", on_click=reset_process)
