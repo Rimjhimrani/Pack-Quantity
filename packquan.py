@@ -20,50 +20,33 @@ def reset_process():
 
 # --- Calculation Engine ---
 def calculate_fit(box_dim, part_dim, nested, nest_pct, stacking, fragile):
-    """
-    Evaluates all 6 orientations and returns the best fit.
-    """
     bw, bl, bh = box_dim
     pw, pl, ph = part_dim
     
-    # Generate all 6 possible orientations (L x W x H)
+    # Generate orientations
     orientations = list(set(itertools.permutations([pw, pl, ph])))
-    
     best_count = 0
     best_orient = None
     
     for orient in orientations:
         ow, ol, oh = orient
-        
-        # Fragility Rule: If fragile, maybe only specific orientations are valid.
-        # Here we assume fragile parts cannot be rotated onto their side (Height must stay H)
         if fragile == "Fragile" and oh != ph:
             continue
             
-        # 1. Calculate how many fit on the floor (Grid)
         cols = bw // ow
         rows = bl // ol
         per_layer = cols * rows
         
-        if per_layer == 0:
-            continue
+        if per_layer == 0: continue
             
-        # 2. Calculate Vertical Fitting (Stacking/Nesting)
         if not stacking:
-            # If stacking is not allowed, only 1 layer is possible
             total_parts = per_layer
         else:
             if nested:
-                # Nesting Formula: First part is 100% height, others are 'nest_pct'%
-                # Total H = oh + (n-1) * (oh * nest_pct/100) <= bh
                 increment = oh * (nest_pct / 100)
-                if increment == 0: # Avoid div by zero
-                    layers = 1000000 
-                else:
-                    layers = 1 + int((bh - oh) // increment)
+                layers = 1 + int((bh - oh) // increment) if increment > 0 else 1
                 total_parts = per_layer * max(1, layers)
             else:
-                # Standard Stacking
                 layers = bh // oh
                 total_parts = per_layer * layers
                 
@@ -71,7 +54,6 @@ def calculate_fit(box_dim, part_dim, nested, nest_pct, stacking, fragile):
             best_count = int(total_parts)
             best_orient = orient
 
-    # Utilization Stats
     part_volume = pw * pl * ph
     used_volume = best_count * part_volume
     box_volume = bw * bl * bh
@@ -94,35 +76,48 @@ if st.session_state.step == 1:
     box_type = st.radio("Choose Source:", ["Predefined Options", "Enter Custom Dimensions"])
     
     if box_type == "Predefined Options":
-        option = st.selectbox("Standard Boxes (W x L x H):", ["Small (20x20x20)", "Medium (40x40x40)", "Large (60x60x60)"])
+        option = st.selectbox("Standard Boxes:", ["Small (20x20x20)", "Medium (40x40x40)", "Large (60x60x60)"])
         dims = {"Small (20x20x20)": (20,20,20), "Medium (40x40x40)": (40,40,40), "Large (60x60x60)": (60,60,60)}
         st.session_state.data['box'] = dims[option]
     else:
         c1, c2, c3 = st.columns(3)
-        bw = c1.number_input("Width", min_value=1.0, value=50.0)
-        bl = c2.number_input("Length", min_value=1.0, value=50.0)
-        bh = c3.number_input("Height", min_value=1.0, value=50.0)
+        bw = c1.number_input("Box Width", min_value=1.0, value=50.0)
+        bl = c2.number_input("Box Length", min_value=1.0, value=50.0)
+        bh = c3.number_input("Box Height", min_value=1.0, value=50.0)
         st.session_state.data['box'] = (bw, bl, bh)
     
     st.button("Next ➡️", on_click=next_step)
 
-# --- Step 2: Part Data Upload ---
+# --- Step 2: Part Data Upload & Column Mapping ---
 elif st.session_state.step == 2:
     st.header("Step 2: Upload Part Data")
-    st.info("Upload a CSV/Excel with columns: Part_Name, Width, Length, Height")
-    uploaded_file = st.file_uploader("Choose a file", type=["csv", "xlsx"])
+    uploaded_file = st.file_uploader("Upload CSV or Excel", type=["csv", "xlsx"])
     
     if uploaded_file:
-        if uploaded_file.name.endswith('.csv'):
-            df = pd.read_csv(uploaded_file)
-        else:
-            df = pd.read_excel(uploaded_file)
-        st.write("Preview of Uploaded Data:")
-        st.dataframe(df.head())
-        st.session_state.data['parts_df'] = df
+        df = pd.read_csv(uploaded_file) if uploaded_file.name.endswith('.csv') else pd.read_excel(uploaded_file)
+        
+        st.write("### Map Your Columns")
+        st.info("Match the required fields to your file columns to avoid errors.")
+        
+        col_names = df.columns.tolist()
+        
+        c1, c2, c3, c4 = st.columns(4)
+        name_col = c1.selectbox("Part Name Column", col_names)
+        w_col = c2.selectbox("Width Column", col_names)
+        l_col = c3.selectbox("Length Column", col_names)
+        h_col = c4.selectbox("Height Column", col_names)
+        
+        # Clean up the dataframe to only use selected columns and rename them
+        final_df = df[[name_col, w_col, l_col, h_col]].copy()
+        final_df.columns = ['Part_Name', 'Width', 'Length', 'Height']
+        
+        st.session_state.data['parts_df'] = final_df
+        st.success("Columns mapped successfully!")
+        st.dataframe(final_df.head())
+        
         st.button("Next ➡️", on_click=next_step)
 
-# --- Step 3 & 4: Nesting Logic ---
+# --- Step 3: Nesting Logic ---
 elif st.session_state.step == 3:
     st.header("Step 3: Nesting Configuration")
     is_nested = st.checkbox("Will parts be nested?")
@@ -134,7 +129,7 @@ elif st.session_state.step == 3:
     st.session_state.data['nest_pct'] = nest_pct
     st.button("Next ➡️", on_click=next_step)
 
-# --- Step 5 & 6: Stacking & Fragility ---
+# --- Step 4: Handling Rules ---
 elif st.session_state.step == 4:
     st.header("Step 4: Handling Rules")
     stacking = st.radio("Is stacking allowed?", ["Yes", "No"]) == "Yes"
@@ -146,7 +141,7 @@ elif st.session_state.step == 4:
     if st.button("Generate Results 🚀"):
         next_step()
 
-# --- Final Results Display ---
+# --- Step 5: Final Results ---
 elif st.session_state.step == 5:
     st.header("Final Results & Space Utilization")
     
@@ -154,8 +149,9 @@ elif st.session_state.step == 5:
     df = st.session_state.data['parts_df']
     results = []
     
-    for index, row in df.iterrows():
-        part_dim = (row['Width'], row['Length'], row['Height'])
+    # Using the standardized names from Step 2
+    for _, row in df.iterrows():
+        part_dim = (float(row['Width']), float(row['Length']), float(row['Height']))
         res = calculate_fit(
             box, 
             part_dim, 
@@ -167,21 +163,17 @@ elif st.session_state.step == 5:
         results.append({
             "Part Name": row['Part_Name'],
             "Parts Per Box": res['count'],
-            "Best Orientation (W,L,H)": str(res['orientation']),
+            "Orientation (W,L,H)": str(res['orientation']),
             "Used Vol": res['used_vol'],
-            "Unused Vol": res['unused_vol'],
             "Utilization (%)": res['util_pct']
         })
     
     res_df = pd.DataFrame(results)
-    st.success("Analysis Complete!")
-    st.dataframe(res_df)
+    st.dataframe(res_df, use_container_width=True)
     
-    # Visual metrics for the first part as a summary
-    if not res_df.empty:
-        m1, m2, m3 = st.columns(3)
-        m1.metric("Avg. Utilization", f"{res_df['Utilization (%)'].mean():.1f}%")
-        m2.metric("Best Fit Count", f"{res_df['Parts Per Box'].max()} units")
-        m3.metric("Total Rows Processed", len(res_df))
+    m1, m2, m3 = st.columns(3)
+    m1.metric("Avg. Utilization", f"{res_df['Utilization (%)'].mean():.1f}%")
+    m2.metric("Total Box Volume", f"{box[0]*box[1]*box[2]:,}")
+    m3.metric("Total Parts Analyzed", len(res_df))
 
     st.button("Start New Process 🔄", on_click=reset_process)
