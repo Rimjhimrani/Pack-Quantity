@@ -16,17 +16,16 @@ html, body, [class*="css"] {
     font-family: 'Inter', sans-serif;
 }
 
-/* Force white text globally for all Streamlit text */
-p, span, div, li, h1, h2, h3, h4, h5, h6,
-[data-testid="stMarkdownContainer"] p,
-[data-testid="stMarkdownContainer"] span,
-.stRadio div, .stCheckbox div,
-[data-testid="stText"], [data-testid="stCaption"],
-[data-baseweb="select"] div,
-[data-testid="stSelectbox"] div,
-[data-testid="stNumberInput"] div,
-[data-testid="stFileUploader"] div {
-    color: #ffffff;
+/* White text only for dark background Streamlit native elements */
+.stApp [data-testid="stMarkdownContainer"] p,
+.stApp [data-testid="stMarkdownContainer"] li,
+.stApp [data-testid="stMarkdownContainer"] strong,
+.stApp [data-testid="stWidgetLabel"] p,
+.stApp [data-testid="stFileUploader"] span,
+.stApp [data-testid="stFileUploader"] p,
+.stApp [data-baseweb="radio"] span,
+.stApp [data-baseweb="checkbox"] span {
+    color: #ffffff !important;
 }
 
 .stApp {
@@ -317,6 +316,11 @@ div[data-testid="stSlider"] {
 label, .stRadio label, .stCheckbox label {
     color: #ffffff !important;
     font-size: 0.9rem !important;
+}
+
+/* Keep dropdown option text readable on light dropdown bg */
+[data-baseweb="select"] [data-testid="stSelectboxVirtualDropdown"] * {
+    color: #1a1a1a !important;
 }
 
 .stSuccess { 
