@@ -16,6 +16,19 @@ html, body, [class*="css"] {
     font-family: 'Inter', sans-serif;
 }
 
+/* Force white text globally for all Streamlit text */
+p, span, div, li, h1, h2, h3, h4, h5, h6,
+[data-testid="stMarkdownContainer"] p,
+[data-testid="stMarkdownContainer"] span,
+.stRadio div, .stCheckbox div,
+[data-testid="stText"], [data-testid="stCaption"],
+[data-baseweb="select"] div,
+[data-testid="stSelectbox"] div,
+[data-testid="stNumberInput"] div,
+[data-testid="stFileUploader"] div {
+    color: #ffffff;
+}
+
 .stApp {
     background: linear-gradient(135deg, #0f1923 0%, #1a2a3a 50%, #0f1923 100%);
     min-height: 100vh;
@@ -39,7 +52,7 @@ html, body, [class*="css"] {
 .main-subtitle {
     font-family: 'Inter', sans-serif;
     font-size: 0.95rem;
-    color: #7a9bb5;
+    color: #ffffff;
     letter-spacing: 2px;
     text-transform: uppercase;
     margin-bottom: 2rem;
@@ -135,9 +148,9 @@ html, body, [class*="css"] {
     font-family: 'Rajdhani', sans-serif;
     font-weight: 700;
     font-size: 0.9rem;
-    border: 2px solid rgba(255,255,255,0.15);
+    border: 2px solid rgba(255,255,255,0.3);
     background: #1a2a3a;
-    color: #4a6a80;
+    color: #ffffff;
     z-index: 1;
     position: relative;
 }
@@ -157,7 +170,7 @@ html, body, [class*="css"] {
 
 .step-label {
     font-size: 0.65rem;
-    color: #4a6a80;
+    color: #ffffff;
     margin-top: 6px;
     text-transform: uppercase;
     letter-spacing: 1px;
@@ -191,7 +204,7 @@ html, body, [class*="css"] {
 }
 
 .card-desc {
-    color: #7a9bb5;
+    color: #ffffff;
     font-size: 0.88rem;
     margin-bottom: 1.5rem;
 }
@@ -243,7 +256,7 @@ html, body, [class*="css"] {
 }
 
 .box-card-label { color: #f5a623; font-weight: 600; font-size: 0.85rem; margin-bottom: 4px; }
-.box-card-dims  { color: #7a9bb5; font-size: 0.78rem; }
+.box-card-dims  { color: #ffffff; font-size: 0.78rem; }
 
 /* ===== INFO STRIP ===== */
 .info-strip {
@@ -259,7 +272,7 @@ html, body, [class*="css"] {
     border-radius: 8px;
     padding: 8px 16px;
     font-size: 0.82rem;
-    color: #b0cce0;
+    color: #ffffff;
 }
 
 .info-pill span { color: #f5a623; font-weight: 600; }
@@ -287,9 +300,9 @@ html, body, [class*="css"] {
 /* Reset button style */
 .stButton > button[kind="secondary"] {
     background: rgba(255,255,255,0.06) !important;
-    color: #b0cce0 !important;
+    color: #ffffff !important;
     box-shadow: none !important;
-    border: 1px solid rgba(255,255,255,0.1) !important;
+    border: 1px solid rgba(255,255,255,0.2) !important;
 }
 
 div[data-testid="stSelectbox"] > div > div,
@@ -302,7 +315,7 @@ div[data-testid="stSlider"] {
 }
 
 label, .stRadio label, .stCheckbox label {
-    color: #b0cce0 !important;
+    color: #ffffff !important;
     font-size: 0.9rem !important;
 }
 
@@ -352,7 +365,7 @@ label, .stRadio label, .stCheckbox label {
     text-align: center;
 }
 .stat-val { font-family: 'Rajdhani',sans-serif; font-size: 1.8rem; font-weight:700; color: #f5a623; }
-.stat-key { font-size: 0.72rem; color: #5a7a90; text-transform: uppercase; letter-spacing:1px; margin-top: 2px; }
+.stat-key { font-size: 0.72rem; color: #ffffff; text-transform: uppercase; letter-spacing:1px; margin-top: 2px; }
 
 /* Download button */
 [data-testid="stDownloadButton"] button {
