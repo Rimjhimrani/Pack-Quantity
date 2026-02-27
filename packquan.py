@@ -1,4 +1,5 @@
 import streamlit as st
+import streamlit.components.v1 as components
 import pandas as pd
 import itertools
 import io
@@ -417,7 +418,7 @@ def calculate_fit(box_dim, part_dim, nested, nest_pct, stacking, fragile):
             total = per_layer * (bh // oh)
         if total > best_count:
             best_count = int(total)
-            best_info = {"count": best_count, "dims": f"{ow}×{ol}×{oh}",
+            best_info = {"count": best_count, "dims": f"{ow}x{ol}x{oh}",
                          "orientation": labels[idx[2]],
                          "used_vol": round(best_count * p[0]*p[1]*p[2], 2)}
     if not best_info: return None
@@ -646,7 +647,7 @@ elif cur == 5:
                 "Orientation": res['dims'],
                 "Placement": res['orientation'],
                 "Utilization": res['util'],
-                "Unused (mm³)": int(res['unused'])
+                "Unused (mm\u00b3)": int(res['unused'])
             })
 
     res_df = pd.DataFrame(results)
@@ -683,42 +684,53 @@ elif cur == 5:
     </div>
     """, unsafe_allow_html=True)
 
-    # Custom table
-    table_html = """
-    <table class="results-table">
-      <thead>
-        <tr>
-          <th>Part Name</th>
-          <th>Parts / Box</th>
-          <th>Orientation</th>
-          <th>Placement</th>
-          <th>Utilization</th>
-          <th>Unused (mm³)</th>
-        </tr>
-      </thead>
-      <tbody>
-    """
+    # Build table rows
+    rows_html = ""
     for _, row in res_df.iterrows():
-        u = row["Utilization"]
-        bar_cls = "util-bar util-high" if u >= 60 else "util-bar"
-        table_html += f"""
-        <tr>
-          <td>{row["Part Name"]}</td>
-          <td>{row["Parts / Box"]}</td>
-          <td>{row["Orientation"]}</td>
-          <td>{row["Placement"]}</td>
-          <td>
-            {u:.1f}%
-            <div class="util-bar-wrap"><div class="{bar_cls}" style="width:{min(u,100):.1f}%"></div></div>
-          </td>
-          <td>{row["Unused (mm³)"]:,}</td>
-        </tr>"""
-    table_html += "</tbody></table>"
-    st.markdown(table_html, unsafe_allow_html=True)
+        u = float(row["Utilization"])
+        bar_color = "#2a9d5c" if u >= 60 else "#e63329"
+        unused_val = int(row["Unused (mm\u00b3)"])
+        rows_html += (
+            f"<tr>"
+            f"<td>{row['Part Name']}</td>"
+            f"<td>{row['Parts / Box']}</td>"
+            f"<td>{row['Orientation']}</td>"
+            f"<td>{row['Placement']}</td>"
+            f"<td>{u:.1f}%"
+            f"<div style='background:#f0ece5;height:6px;width:100%;margin-top:4px;overflow:hidden'>"
+            f"<div style='height:100%;width:{min(u,100):.1f}%;background:{bar_color}'></div></div></td>"
+            f"<td>{unused_val:,}</td>"
+            f"</tr>"
+        )
+
+    table_html = f"""
+    <style>
+      @import url('https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&display=swap');
+      body {{ margin:0; padding:0; background:transparent; }}
+      table {{ width:100%; border-collapse:collapse; font-size:0.82rem;
+               background:#fff; border:1px solid #ddd; font-family:'DM Mono',monospace; }}
+      th {{ font-size:0.62rem; letter-spacing:1.5px; text-transform:uppercase;
+            color:#999; padding:0.7rem 1rem; text-align:left;
+            border-bottom:2px solid #111; background:#fff; white-space:nowrap; }}
+      td {{ padding:0.85rem 1rem; border-bottom:1px solid #eee; color:#222;
+            font-size:0.78rem; }}
+      tr:last-child td {{ border-bottom:none; }}
+      tr:hover td {{ background:#faf8f4; }}
+    </style>
+    <table>
+      <thead><tr>
+        <th>Part Name</th><th>Parts / Box</th><th>Orientation</th>
+        <th>Placement</th><th>Utilization</th><th>Unused (mm3)</th>
+      </tr></thead>
+      <tbody>{rows_html}</tbody>
+    </table>
+    """
+    components.html(table_html, height=max(200, len(res_df) * 70 + 60), scrolling=False)
 
     output = io.BytesIO()
+    export_df = res_df.rename(columns={"Unused (mm\u00b3)": "Unused (mm3)"})
     with pd.ExcelWriter(output, engine='xlsxwriter') as writer:
-        res_df.to_excel(writer, index=False, sheet_name='AgiloPack')
+        export_df.to_excel(writer, index=False, sheet_name='AgiloPack')
 
     c1, c2 = st.columns([1, 1])
     with c1:
