@@ -3,656 +3,632 @@ import pandas as pd
 import itertools
 import io
 
-# --- Page Configuration ---
-st.set_page_config(page_title="AgiloPack - Space Utilization", layout="wide", page_icon="📦")
+st.set_page_config(page_title="AgiloPack", layout="wide", page_icon="▪")
 
-# --- CSS Styling ---
 st.markdown("""
 <style>
-@import url('https://fonts.googleapis.com/css2?family=Rajdhani:wght@400;500;600;700&family=Inter:wght@300;400;500;600&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=DM+Mono:wght@300;400;500&family=Bebas+Neue&family=DM+Sans:wght@300;400;500;600&display=swap');
 
-/* ===== GLOBAL ===== */
-html, body, [class*="css"] {
-    font-family: 'Inter', sans-serif;
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+html, body, [class*="css"], .stApp {
+    font-family: 'DM Sans', sans-serif;
+    background: #f7f4ef !important;
+    color: #111 !important;
 }
 
-/* White text only for dark background Streamlit native elements */
-.stApp [data-testid="stMarkdownContainer"] p,
-.stApp [data-testid="stMarkdownContainer"] li,
-.stApp [data-testid="stMarkdownContainer"] strong,
-.stApp [data-testid="stWidgetLabel"] p,
-
-.stApp [data-baseweb="radio"] span,
-.stApp [data-baseweb="checkbox"] span {
-    color: #ffffff !important;
+/* ─── LAYOUT SHELL ─── */
+.block-container {
+    max-width: 960px !important;
+    padding: 0 2rem 4rem 2rem !important;
 }
 
-.stApp {
-    background: linear-gradient(135deg, #0f1923 0%, #1a2a3a 50%, #0f1923 100%);
-    min-height: 100vh;
+/* ─── MASTHEAD ─── */
+.masthead {
+    border-bottom: 3px solid #111;
+    padding: 2.5rem 0 1.2rem 0;
+    margin-bottom: 0;
+    display: flex;
+    align-items: baseline;
+    gap: 1.4rem;
 }
-
-/* ===== HEADER ===== */
-.main-title {
-    font-family: 'Rajdhani', sans-serif;
-    font-size: 3rem;
-    font-weight: 700;
-    letter-spacing: 3px;
-    text-transform: uppercase;
-    background: linear-gradient(90deg, #f5a623, #f7c46e, #f5a623);
-    background-size: 200% auto;
-    -webkit-background-clip: text;
-    -webkit-text-fill-color: transparent;
-    animation: shimmer 3s linear infinite;
-    margin-bottom: 0.2rem;
+.masthead-logo {
+    font-family: 'Bebas Neue', sans-serif;
+    font-size: 4.2rem;
+    letter-spacing: 4px;
+    color: #111;
+    line-height: 1;
 }
-
-.main-subtitle {
-    font-family: 'Inter', sans-serif;
-    font-size: 0.95rem;
-    color: #ffffff;
+.masthead-accent {
+    display: inline-block;
+    width: 10px; height: 10px;
+    background: #e63329;
+    border-radius: 50%;
+    margin-bottom: 6px;
+}
+.masthead-tagline {
+    font-family: 'DM Mono', monospace;
+    font-size: 0.72rem;
     letter-spacing: 2px;
+    color: #888;
     text-transform: uppercase;
-    margin-bottom: 2rem;
+    border-left: 2px solid #ccc;
+    padding-left: 1rem;
 }
 
-@keyframes shimmer {
-    0% { background-position: 0% center; }
-    100% { background-position: 200% center; }
-}
-
-/* ===== 3D BOX ANIMATION ===== */
-.box-scene-wrapper {
+/* ─── STEP RIBBON ─── */
+.ribbon {
     display: flex;
-    justify-content: center;
-    align-items: center;
-    margin: 1.5rem 0;
+    border-bottom: 1px solid #ddd;
+    margin-bottom: 3rem;
 }
-
-.box-scene {
-    width: 120px;
-    height: 120px;
-    perspective: 400px;
-}
-
-.box-3d {
-    width: 100%;
-    height: 100%;
-    position: relative;
-    transform-style: preserve-3d;
-    animation: rotatebox 6s ease-in-out infinite;
-}
-
-@keyframes rotatebox {
-    0%   { transform: rotateX(-20deg) rotateY(0deg); }
-    50%  { transform: rotateX(-20deg) rotateY(180deg); }
-    100% { transform: rotateX(-20deg) rotateY(360deg); }
-}
-
-.box-face {
-    position: absolute;
-    width: 80px;
-    height: 80px;
-    border: 2px solid rgba(245,166,35,0.6);
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    font-size: 24px;
-    backface-visibility: visible;
-}
-
-.face-front  { background: rgba(245,166,35,0.18); transform: translateZ(40px); left:20px; top:20px; }
-.face-back   { background: rgba(245,166,35,0.10); transform: rotateY(180deg) translateZ(40px); left:20px; top:20px; }
-.face-left   { background: rgba(200,130,20,0.13); transform: rotateY(-90deg) translateZ(40px); left:20px; top:20px; }
-.face-right  { background: rgba(200,130,20,0.13); transform: rotateY(90deg) translateZ(40px); left:20px; top:20px; }
-.face-top    { background: rgba(245,200,80,0.20); transform: rotateX(90deg) translateZ(40px); left:20px; top:20px; }
-.face-bottom { background: rgba(180,110,10,0.10); transform: rotateX(-90deg) translateZ(40px); left:20px; top:20px; }
-
-/* ===== STEP INDICATOR ===== */
-.step-bar {
-    display: flex;
-    justify-content: center;
-    gap: 0;
-    margin: 1.5rem auto 2rem auto;
-    max-width: 600px;
-}
-
-.step-item {
-    display: flex;
-    flex-direction: column;
-    align-items: center;
+.rib-item {
     flex: 1;
+    padding: 0.7rem 0;
+    font-family: 'DM Mono', monospace;
+    font-size: 0.68rem;
+    letter-spacing: 1.5px;
+    text-transform: uppercase;
+    color: #aaa;
+    text-align: center;
+    border-right: 1px solid #ddd;
     position: relative;
 }
-
-.step-item:not(:last-child)::after {
+.rib-item:last-child { border-right: none; }
+.rib-item.active {
+    color: #111;
+    font-weight: 500;
+}
+.rib-item.active::after {
     content: '';
     position: absolute;
-    top: 18px;
-    left: 50%;
-    width: 100%;
-    height: 2px;
-    background: rgba(255,255,255,0.1);
-    z-index: 0;
+    bottom: -1px; left: 0; right: 0;
+    height: 3px;
+    background: #e63329;
+}
+.rib-item.done { color: #555; }
+.rib-num {
+    display: block;
+    font-size: 1.1rem;
+    font-family: 'Bebas Neue', sans-serif;
+    letter-spacing: 2px;
+    margin-bottom: 2px;
 }
 
-.step-circle {
-    width: 36px;
-    height: 36px;
-    border-radius: 50%;
+/* ─── SECTION HEADING ─── */
+.sec-head {
     display: flex;
     align-items: center;
-    justify-content: center;
-    font-family: 'Rajdhani', sans-serif;
-    font-weight: 700;
-    font-size: 0.9rem;
-    border: 2px solid rgba(255,255,255,0.3);
-    background: #1a2a3a;
-    color: #ffffff;
-    z-index: 1;
-    position: relative;
+    gap: 1.2rem;
+    margin-bottom: 0.4rem;
 }
-
-.step-circle.active {
-    background: #f5a623;
-    border-color: #f5a623;
-    color: #0f1923;
-    box-shadow: 0 0 16px rgba(245,166,35,0.5);
+.sec-num {
+    font-family: 'Bebas Neue', sans-serif;
+    font-size: 5rem;
+    line-height: 1;
+    color: #e8e4dc;
+    letter-spacing: 2px;
+    user-select: none;
 }
-
-.step-circle.done {
-    background: #2a7a4a;
-    border-color: #3aaa6a;
-    color: #fff;
+.sec-title {
+    font-family: 'Bebas Neue', sans-serif;
+    font-size: 2rem;
+    letter-spacing: 2px;
+    color: #111;
 }
-
-.step-label {
-    font-size: 0.65rem;
-    color: #ffffff;
-    margin-top: 6px;
-    text-transform: uppercase;
-    letter-spacing: 1px;
-    text-align: center;
+.sec-rule {
+    border: none;
+    border-top: 1px solid #ccc;
+    margin-bottom: 2rem;
 }
-
-.step-label.active { color: #f5a623; font-weight: 600; }
-.step-label.done   { color: #3aaa6a; }
-
-/* ===== CARD ===== */
-.ui-card {
-    background: linear-gradient(135deg, rgba(26,42,58,0.95), rgba(20,32,45,0.95));
-    border: 1px solid rgba(245,166,35,0.15);
-    border-radius: 16px;
-    padding: 2rem 2.5rem;
-    box-shadow: 0 8px 32px rgba(0,0,0,0.4), inset 0 1px 0 rgba(255,255,255,0.05);
-    margin-bottom: 1.5rem;
-}
-
-.card-title {
-    font-family: 'Rajdhani', sans-serif;
-    font-size: 1.6rem;
-    font-weight: 600;
-    letter-spacing: 1.5px;
-    color: #f5a623;
-    text-transform: uppercase;
-    margin-bottom: 0.3rem;
-    display: flex;
-    align-items: center;
-    gap: 10px;
-}
-
-.card-desc {
-    color: #ffffff;
+.sec-desc {
     font-size: 0.88rem;
-    margin-bottom: 1.5rem;
+    color: #555;
+    line-height: 1.6;
+    margin-bottom: 2rem;
+    max-width: 540px;
 }
 
-/* ===== BADGES ===== */
-.badge {
-    display: inline-block;
-    padding: 4px 14px;
-    border-radius: 50px;
-    font-size: 0.75rem;
-    font-weight: 600;
-    letter-spacing: 1px;
-    text-transform: uppercase;
-}
-
-.badge-gold    { background: rgba(245,166,35,0.15); color: #f5a623; border: 1px solid rgba(245,166,35,0.3); }
-.badge-green   { background: rgba(58,170,106,0.15); color: #3aaa6a; border: 1px solid rgba(58,170,106,0.3); }
-.badge-blue    { background: rgba(60,120,200,0.15); color: #6aaaf5; border: 1px solid rgba(60,120,200,0.3); }
-
-/* ===== BOX SIZE CARDS ===== */
-.box-option-grid {
-    display: grid;
-    grid-template-columns: repeat(auto-fill, minmax(190px, 1fr));
-    gap: 12px;
-    margin-top: 1rem;
-}
-
-.box-card {
-    background: rgba(255,255,255,0.03);
-    border: 1px solid rgba(255,255,255,0.08);
-    border-radius: 12px;
-    padding: 14px 16px;
-    cursor: pointer;
-    transition: all 0.2s ease;
-    position: relative;
+/* ─── DATA PILL GRID ─── */
+.pill-row {
+    display: flex;
+    gap: 0;
+    margin-bottom: 2rem;
+    border: 1px solid #ddd;
+    border-radius: 0;
     overflow: hidden;
 }
-
-.box-card:hover {
-    border-color: rgba(245,166,35,0.4);
-    background: rgba(245,166,35,0.05);
-    transform: translateY(-2px);
-    box-shadow: 0 4px 20px rgba(245,166,35,0.1);
+.pill {
+    flex: 1;
+    padding: 0.9rem 1.2rem;
+    border-right: 1px solid #ddd;
+    background: #fff;
+}
+.pill:last-child { border-right: none; }
+.pill-label {
+    font-family: 'DM Mono', monospace;
+    font-size: 0.62rem;
+    letter-spacing: 1.5px;
+    text-transform: uppercase;
+    color: #999;
+    margin-bottom: 3px;
+}
+.pill-val {
+    font-family: 'DM Mono', monospace;
+    font-size: 1rem;
+    font-weight: 500;
+    color: #111;
 }
 
-.box-card.selected {
-    border-color: #f5a623;
-    background: rgba(245,166,35,0.08);
+/* ─── BOX SELECTOR GRID ─── */
+.bx-grid {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 0;
+    border: 1px solid #ddd;
+    margin-bottom: 2rem;
+    overflow: hidden;
+}
+.bx-item {
+    padding: 1rem 1.2rem;
+    border-right: 1px solid #ddd;
+    border-bottom: 1px solid #ddd;
+    cursor: default;
+    background: #fff;
+    transition: background 0.15s;
+}
+.bx-item:nth-child(4n) { border-right: none; }
+.bx-name {
+    font-family: 'Bebas Neue', sans-serif;
+    font-size: 1rem;
+    letter-spacing: 1.5px;
+    color: #111;
+    margin-bottom: 4px;
+}
+.bx-dims {
+    font-family: 'DM Mono', monospace;
+    font-size: 0.7rem;
+    color: #888;
+}
+.bx-vol {
+    font-family: 'DM Mono', monospace;
+    font-size: 0.65rem;
+    color: #bbb;
+    margin-top: 4px;
 }
 
-.box-card-label { color: #f5a623; font-weight: 600; font-size: 0.85rem; margin-bottom: 4px; }
-.box-card-dims  { color: #ffffff; font-size: 0.78rem; }
-
-/* ===== INFO STRIP ===== */
-.info-strip {
-    display: flex;
-    gap: 12px;
-    flex-wrap: wrap;
-    margin: 1rem 0;
+/* ─── STAT GRID ─── */
+.stat-grid {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 0;
+    border: 1px solid #ddd;
+    overflow: hidden;
+    margin-bottom: 2.5rem;
+    background: #fff;
 }
+.stat-cell {
+    padding: 1.4rem 1.6rem;
+    border-right: 1px solid #ddd;
+}
+.stat-cell:last-child { border-right: none; }
+.stat-label {
+    font-family: 'DM Mono', monospace;
+    font-size: 0.62rem;
+    letter-spacing: 1.5px;
+    text-transform: uppercase;
+    color: #999;
+    margin-bottom: 6px;
+}
+.stat-value {
+    font-family: 'Bebas Neue', sans-serif;
+    font-size: 2.2rem;
+    letter-spacing: 1px;
+    color: #111;
+    line-height: 1;
+}
+.stat-value.red { color: #e63329; }
 
-.info-pill {
-    background: rgba(255,255,255,0.04);
-    border: 1px solid rgba(255,255,255,0.08);
-    border-radius: 8px;
-    padding: 8px 16px;
+/* ─── TABLE ─── */
+.results-table {
+    width: 100%;
+    border-collapse: collapse;
     font-size: 0.82rem;
-    color: #ffffff;
+    background: #fff;
+    border: 1px solid #ddd;
+    margin-bottom: 2rem;
+}
+.results-table th {
+    font-family: 'DM Mono', monospace;
+    font-size: 0.62rem;
+    letter-spacing: 1.5px;
+    text-transform: uppercase;
+    color: #999;
+    padding: 0.7rem 1rem;
+    text-align: left;
+    border-bottom: 2px solid #111;
+    background: #fff;
+    white-space: nowrap;
+}
+.results-table td {
+    padding: 0.85rem 1rem;
+    border-bottom: 1px solid #eee;
+    color: #222;
+    font-family: 'DM Mono', monospace;
+    font-size: 0.78rem;
+}
+.results-table tr:last-child td { border-bottom: none; }
+.results-table tr:hover td { background: #faf8f4; }
+.util-bar-wrap {
+    background: #f0ece5;
+    border-radius: 0;
+    height: 6px;
+    width: 100%;
+    margin-top: 4px;
+    overflow: hidden;
+}
+.util-bar {
+    height: 100%;
+    background: #e63329;
+    transition: width 0.6s ease;
+}
+.util-high { background: #2a9d5c; }
+
+/* ─── TOGGLE SECTION ─── */
+.toggle-row {
+    display: flex;
+    gap: 0;
+    border: 1px solid #ddd;
+    overflow: hidden;
+    margin-bottom: 2rem;
+    background: #fff;
+}
+.toggle-opt {
+    flex: 1;
+    padding: 1rem 1.2rem;
+    border-right: 1px solid #ddd;
+    cursor: default;
+}
+.toggle-opt:last-child { border-right: none; }
+.toggle-label {
+    font-family: 'Bebas Neue', sans-serif;
+    font-size: 1rem;
+    letter-spacing: 1.5px;
+    color: #111;
+}
+.toggle-sub {
+    font-family: 'DM Mono', monospace;
+    font-size: 0.68rem;
+    color: #999;
+    margin-top: 3px;
 }
 
-.info-pill span { color: #f5a623; font-weight: 600; }
-
-/* ===== STREAMLIT OVERRIDES ===== */
+/* ─── STREAMLIT OVERRIDES ─── */
 .stButton > button {
-    background: linear-gradient(135deg, #f5a623, #e8920a) !important;
-    color: #0f1923 !important;
+    background: #111 !important;
+    color: #f7f4ef !important;
     border: none !important;
-    border-radius: 10px !important;
-    font-family: 'Rajdhani', sans-serif !important;
-    font-size: 1rem !important;
-    font-weight: 700 !important;
-    letter-spacing: 1.5px !important;
+    border-radius: 0 !important;
+    font-family: 'DM Mono', monospace !important;
+    font-size: 0.78rem !important;
+    letter-spacing: 2px !important;
     text-transform: uppercase !important;
-    padding: 0.5rem 2rem !important;
-    transition: all 0.2s ease !important;
-    box-shadow: 0 4px 16px rgba(245,166,35,0.3) !important;
+    padding: 0.75rem 2.5rem !important;
+    transition: background 0.15s !important;
+    box-shadow: none !important;
+    font-weight: 500 !important;
 }
 .stButton > button:hover {
-    transform: translateY(-2px) !important;
-    box-shadow: 0 6px 24px rgba(245,166,35,0.45) !important;
+    background: #e63329 !important;
+    transform: none !important;
+    box-shadow: none !important;
 }
 
-/* Reset button style */
-.stButton > button[kind="secondary"] {
-    background: rgba(255,255,255,0.06) !important;
-    color: #ffffff !important;
-    box-shadow: none !important;
-    border: 1px solid rgba(255,255,255,0.2) !important;
+[data-testid="stDownloadButton"] > button {
+    background: #2a9d5c !important;
+    color: #fff !important;
+}
+[data-testid="stDownloadButton"] > button:hover {
+    background: #1e7a46 !important;
+}
+
+div[data-testid="stSelectbox"] label,
+div[data-testid="stNumberInput"] label,
+div[data-testid="stFileUploader"] label,
+.stRadio label, .stCheckbox label,
+[data-testid="stWidgetLabel"] p {
+    font-family: 'DM Mono', monospace !important;
+    font-size: 0.7rem !important;
+    letter-spacing: 1.5px !important;
+    text-transform: uppercase !important;
+    color: #666 !important;
+    font-weight: 400 !important;
 }
 
 div[data-testid="stSelectbox"] > div > div,
-div[data-testid="stNumberInput"] input,
-div[data-testid="stSlider"] {
-    background: rgba(255,255,255,0.04) !important;
-    border-color: rgba(255,255,255,0.12) !important;
-    color: #e0eaf5 !important;
-    border-radius: 8px !important;
+div[data-testid="stNumberInput"] input {
+    background: #fff !important;
+    border: 1px solid #ddd !important;
+    border-radius: 0 !important;
+    color: #111 !important;
+    font-family: 'DM Mono', monospace !important;
+    font-size: 0.85rem !important;
 }
 
-label, .stRadio label, .stCheckbox label {
-    color: #ffffff !important;
-    font-size: 0.9rem !important;
+div[data-testid="stSlider"] > div {
+    accent-color: #e63329;
 }
 
-/* Keep dropdown option text readable on light dropdown bg */
-[data-baseweb="select"] [data-testid="stSelectboxVirtualDropdown"] * {
-    color: #1a1a1a !important;
+.stSuccess, [data-testid="stAlert"] {
+    background: #eef8f3 !important;
+    border: 1px solid #2a9d5c !important;
+    border-radius: 0 !important;
+    color: #1a5c35 !important;
 }
+.stSuccess p { color: #1a5c35 !important; }
 
-.stSuccess { 
-    background: rgba(58,170,106,0.1) !important; 
-    border: 1px solid rgba(58,170,106,0.3) !important;
-    border-radius: 8px !important;
-    color: #3aaa6a !important;
-}
-
-/* Dataframe */
-.stDataFrame {
-    border: 1px solid rgba(245,166,35,0.2) !important;
-    border-radius: 12px !important;
-    overflow: hidden !important;
-}
-
-/* Divider */
-.divider {
-    border: none;
-    border-top: 1px solid rgba(255,255,255,0.06);
-    margin: 1.5rem 0;
-}
-
-/* File uploader has light background - keep text dark */
-[data-testid="stFileUploader"] span,
-[data-testid="stFileUploader"] p,
-[data-testid="stFileUploader"] button,
-[data-testid="stFileUploader"] small {
-    color: #1a1a1a !important;
-}
-
-/* Upload area */
 [data-testid="stFileUploader"] {
-    border: 2px dashed rgba(245,166,35,0.3) !important;
-    border-radius: 12px !important;
-    background: rgba(245,166,35,0.02) !important;
-    padding: 1rem !important;
+    border: 2px dashed #ccc !important;
+    border-radius: 0 !important;
+    background: #fff !important;
 }
 
-/* Progress stat */
-.stat-row {
-    display: flex;
-    gap: 16px;
-    flex-wrap: wrap;
-    margin-top: 1rem;
-}
-.stat-box {
-    flex: 1;
-    min-width: 120px;
-    background: rgba(255,255,255,0.03);
-    border: 1px solid rgba(255,255,255,0.06);
-    border-radius: 10px;
-    padding: 14px 16px;
-    text-align: center;
-}
-.stat-val { font-family: 'Rajdhani',sans-serif; font-size: 1.8rem; font-weight:700; color: #f5a623; }
-.stat-key { font-size: 0.72rem; color: #ffffff; text-transform: uppercase; letter-spacing:1px; margin-top: 2px; }
+.stDataFrame { display: none; }
 
-/* Download button */
-[data-testid="stDownloadButton"] button {
-    background: linear-gradient(135deg, #2a7a4a, #1d5c37) !important;
-    color: #fff !important;
-    box-shadow: 0 4px 16px rgba(42,122,74,0.35) !important;
-}
+div[data-baseweb="radio"] label span { color: #111 !important; }
+div[data-baseweb="checkbox"] label span { color: #111 !important; }
+
+[data-testid="stVerticalBlock"] { gap: 0.6rem !important; }
+
+footer { display: none !important; }
+#MainMenu { display: none !important; }
 </style>
 """, unsafe_allow_html=True)
 
-# --- Initialize Session State ---
-if 'step' not in st.session_state:
-    st.session_state.step = 1
-if 'data' not in st.session_state:
-    st.session_state.data = {}
-if 'mapping_confirmed' not in st.session_state:
-    st.session_state.mapping_confirmed = False
+# ── State ──────────────────────────────────────────────────────────────────────
+for k, v in [('step', 1), ('data', {}), ('mapping_confirmed', False)]:
+    if k not in st.session_state:
+        st.session_state[k] = v
 
-def next_step():
-    st.session_state.step += 1
-
+def next_step(): st.session_state.step += 1
 def reset_process():
-    for key in list(st.session_state.keys()):
-        del st.session_state[key]
+    for k in list(st.session_state.keys()): del st.session_state[k]
     st.rerun()
 
-# --- Calculation Engine ---
+# ── Engine ────────────────────────────────────────────────────────────────────
 def calculate_fit(box_dim, part_dim, nested, nest_pct, stacking, fragile):
     bl, bw, bh = box_dim
-    p_dims = [part_dim[0], part_dim[1], part_dim[2]]
+    p = list(part_dim)
     labels = {0: "Breadthwise", 1: "Lengthwise", 2: "Heightwise"}
-    orient_indices = list(itertools.permutations([0, 1, 2]))
-    best_count = 0
-    best_info = None
-
-    for idx in orient_indices:
-        ow, ol, oh = p_dims[idx[0]], p_dims[idx[1]], p_dims[idx[2]]
-        if fragile == "Fragile" and idx[2] != 2:
-            continue
-        cols = bw // ow
-        rows = bl // ol
+    best_count, best_info = 0, None
+    for idx in itertools.permutations([0, 1, 2]):
+        ow, ol, oh = p[idx[0]], p[idx[1]], p[idx[2]]
+        if fragile == "Fragile" and idx[2] != 2: continue
+        cols, rows = bw // ow, bl // ol
         per_layer = cols * rows
         if per_layer <= 0: continue
         if not stacking:
-            total_parts = per_layer
+            total = per_layer
+        elif nested:
+            inc = oh * (nest_pct / 100)
+            layers = 1 + int((bh - oh) // inc) if (bh >= oh and inc > 0) else 1
+            total = per_layer * max(1, layers)
         else:
-            if nested:
-                increment = oh * (nest_pct / 100)
-                layers = 1 + int((bh - oh) // increment) if (bh >= oh and increment > 0) else 1
-                total_parts = per_layer * max(1, layers)
-            else:
-                layers = bh // oh
-                total_parts = per_layer * layers
-        if total_parts > best_count:
-            best_count = int(total_parts)
-            best_info = {
-                "count": best_count,
-                "dims": f"{ow}x{ol}x{oh}",
-                "orientation_label": labels[idx[2]],
-                "used_vol": round(best_count * (p_dims[0] * p_dims[1] * p_dims[2]), 2)
-            }
-
+            total = per_layer * (bh // oh)
+        if total > best_count:
+            best_count = int(total)
+            best_info = {"count": best_count, "dims": f"{ow}×{ol}×{oh}",
+                         "orientation": labels[idx[2]],
+                         "used_vol": round(best_count * p[0]*p[1]*p[2], 2)}
     if not best_info: return None
-    box_vol = bw * bl * bh
-    best_info["util"] = round((best_info["used_vol"] / box_vol) * 100, 2)
-    best_info["unused_vol"] = round(box_vol - best_info["used_vol"], 2)
+    bvol = bw * bl * bh
+    best_info["util"] = round((best_info["used_vol"] / bvol) * 100, 2)
+    best_info["unused"] = round(bvol - best_info["used_vol"], 2)
     return best_info
 
-# --- 3D Box Animation HTML ---
-def render_3d_box(size_label=""):
-    return f"""
-    <div class="box-scene-wrapper">
-      <div class="box-scene">
-        <div class="box-3d">
-          <div class="box-face face-front">📦</div>
-          <div class="box-face face-back"></div>
-          <div class="box-face face-left"></div>
-          <div class="box-face face-right"></div>
-          <div class="box-face face-top"></div>
-          <div class="box-face face-bottom"></div>
-        </div>
-      </div>
-    </div>
-    """
+# ── Masthead ──────────────────────────────────────────────────────────────────
+st.markdown("""
+<div class="masthead">
+  <div>
+    <span class="masthead-logo">AgiloPack</span><span class="masthead-accent"></span>
+  </div>
+  <div class="masthead-tagline">Box Space Utilization</div>
+</div>
+""", unsafe_allow_html=True)
 
-# --- Step Progress Bar ---
-def render_steps(current):
-    step_info = [
-        ("1", "Box"),
-        ("2", "Data"),
-        ("3", "Nesting"),
-        ("4", "Handling"),
-        ("5", "Results"),
-    ]
-    html = '<div class="step-bar">'
-    for i, (num, label) in enumerate(step_info, 1):
-        if i < current:
-            circle_cls = "done"
-            label_cls = "done"
-            num_display = "✓"
-        elif i == current:
-            circle_cls = "active"
-            label_cls = "active"
-            num_display = num
-        else:
-            circle_cls = ""
-            label_cls = ""
-            num_display = num
-        html += f"""
-        <div class="step-item">
-          <div class="step-circle {circle_cls}">{num_display}</div>
-          <div class="step-label {label_cls}">{label}</div>
-        </div>"""
-    html += '</div>'
-    return html
+# ── Step Ribbon ───────────────────────────────────────────────────────────────
+STEPS = ["Box", "Data", "Nesting", "Handling", "Results"]
+cur = st.session_state.step
+ribbon_html = '<div class="ribbon">'
+for i, s in enumerate(STEPS, 1):
+    cls = "active" if i == cur else ("done" if i < cur else "")
+    ribbon_html += f'<div class="rib-item {cls}"><span class="rib-num">0{i}</span>{s}</div>'
+ribbon_html += '</div>'
+st.markdown(ribbon_html, unsafe_allow_html=True)
 
-# ===== HEADER =====
-st.markdown('<div class="main-title">📦 AgiloPack</div>', unsafe_allow_html=True)
-st.markdown('<div class="main-subtitle">Intelligent Box Space Utilization Tool</div>', unsafe_allow_html=True)
-st.markdown(render_steps(st.session_state.step), unsafe_allow_html=True)
-
-# ===== STEP 1: BOX =====
-if st.session_state.step == 1:
-    st.markdown(render_3d_box(), unsafe_allow_html=True)
+# ─────────────────────────────────────────────────────────────────────────────
+# STEP 1 — BOX
+# ─────────────────────────────────────────────────────────────────────────────
+if cur == 1:
     st.markdown("""
-    <div class="ui-card">
-        <div class="card-title">🗃️ Step 1 — Select Box Size</div>
-        <div class="card-desc">Choose a standard shipping box or enter your own custom dimensions (L × W × H in mm).</div>
+    <div class="sec-head">
+      <span class="sec-num">01</span>
+      <span class="sec-title">Select Box Size</span>
     </div>
+    <hr class="sec-rule">
+    <p class="sec-desc">Choose a standard shipping configuration or define custom dimensions in millimetres (L × W × H).</p>
     """, unsafe_allow_html=True)
 
-    PREDEFINED_BOXES = {
-        "Option A — 120×80×80":   (120, 80, 80),
-        "Option B — 200×180×120": (200, 180, 120),
-        "Option C — 360×360×100": (360, 360, 100),
-        "Option D — 400×300×220": (400, 300, 220),
-        "Option E — 600×500×400": (600, 500, 400),
-        "Option F — 850×400×250": (850, 400, 250),
-        "Option G — 1200×1000×250": (1200, 1000, 250),
-        "Option H — 1500×1200×1000": (1500, 1200, 1000),
+    BOXES = {
+        "A": (120, 80, 80), "B": (200, 180, 120), "C": (360, 360, 100),
+        "D": (400, 300, 220), "E": (600, 500, 400), "F": (850, 400, 250),
+        "G": (1200, 1000, 250), "H": (1500, 1200, 1000),
     }
 
-    box_type = st.radio("Choose Input Type:", ["📋 Predefined Standard Boxes", "✏️ Custom Dimensions"], horizontal=True)
+    grid_html = '<div class="bx-grid">'
+    for k, v in BOXES.items():
+        grid_html += f"""<div class="bx-item">
+          <div class="bx-name">Option {k}</div>
+          <div class="bx-dims">{v[0]} × {v[1]} × {v[2]} mm</div>
+          <div class="bx-vol">{v[0]*v[1]*v[2]:,} mm³</div>
+        </div>"""
+    grid_html += '</div>'
+    st.markdown(grid_html, unsafe_allow_html=True)
 
-    if box_type == "📋 Predefined Standard Boxes":
-        option = st.selectbox("Select a Standard Box (L × W × H in mm):", list(PREDEFINED_BOXES.keys()))
-        dims = PREDEFINED_BOXES[option]
-        st.session_state.data['box'] = dims
-        st.markdown(f"""
-        <div class="info-strip">
-          <div class="info-pill">Length: <span>{dims[0]} mm</span></div>
-          <div class="info-pill">Width: <span>{dims[1]} mm</span></div>
-          <div class="info-pill">Height: <span>{dims[2]} mm</span></div>
-          <div class="info-pill">Volume: <span>{dims[0]*dims[1]*dims[2]:,} mm³</span></div>
-        </div>
-        """, unsafe_allow_html=True)
+    box_type = st.radio("Input type", ["Predefined", "Custom"], horizontal=True)
+
+    if box_type == "Predefined":
+        opts = {f"Option {k} — {v[0]}×{v[1]}×{v[2]}": v for k, v in BOXES.items()}
+        sel = st.selectbox("Box selection", list(opts.keys()))
+        dims = opts[sel]
     else:
         c1, c2, c3 = st.columns(3)
-        l = c1.number_input("📏 Length (mm)", min_value=1.0, value=50.0)
-        w = c2.number_input("📐 Width (mm)", min_value=1.0, value=50.0)
-        h = c3.number_input("📦 Height (mm)", min_value=1.0, value=50.0)
-        st.session_state.data['box'] = (l, w, h)
-        st.markdown(f"""
-        <div class="info-strip">
-          <div class="info-pill">Volume: <span>{l*w*h:,.0f} mm³</span></div>
-        </div>
-        """, unsafe_allow_html=True)
+        l = c1.number_input("Length (mm)", min_value=1.0, value=50.0)
+        w = c2.number_input("Width (mm)", min_value=1.0, value=50.0)
+        h = c3.number_input("Height (mm)", min_value=1.0, value=50.0)
+        dims = (l, w, h)
 
-    st.markdown("<br>", unsafe_allow_html=True)
-    st.button("Next ➡️", on_click=next_step)
-
-# ===== STEP 2: DATA MAPPING =====
-elif st.session_state.step == 2:
-    st.markdown("""
-    <div class="ui-card">
-        <div class="card-title">📂 Step 2 — Upload & Map Part Data</div>
-        <div class="card-desc">Upload a CSV or Excel file containing your parts list. Then map columns to the correct dimensions.</div>
+    st.session_state.data['box'] = dims
+    st.markdown(f"""
+    <div class="pill-row">
+      <div class="pill"><div class="pill-label">Length</div><div class="pill-val">{dims[0]} mm</div></div>
+      <div class="pill"><div class="pill-label">Width</div><div class="pill-val">{dims[1]} mm</div></div>
+      <div class="pill"><div class="pill-label">Height</div><div class="pill-val">{dims[2]} mm</div></div>
+      <div class="pill"><div class="pill-label">Volume</div><div class="pill-val">{int(dims[0]*dims[1]*dims[2]):,} mm³</div></div>
     </div>
     """, unsafe_allow_html=True)
 
-    uploaded_file = st.file_uploader("Drop your file here or click to browse", type=["csv", "xlsx"])
+    st.button("Continue →", on_click=next_step)
+
+# ─────────────────────────────────────────────────────────────────────────────
+# STEP 2 — DATA
+# ─────────────────────────────────────────────────────────────────────────────
+elif cur == 2:
+    st.markdown("""
+    <div class="sec-head">
+      <span class="sec-num">02</span>
+      <span class="sec-title">Upload Part Data</span>
+    </div>
+    <hr class="sec-rule">
+    <p class="sec-desc">Upload a CSV or Excel file with your parts list, then map columns to the correct dimension fields.</p>
+    """, unsafe_allow_html=True)
+
+    uploaded_file = st.file_uploader("Drop file here", type=["csv", "xlsx"])
 
     if uploaded_file:
         if 'raw_df' not in st.session_state:
-            st.session_state.raw_df = pd.read_csv(uploaded_file) if uploaded_file.name.endswith('.csv') else pd.read_excel(uploaded_file)
-
+            st.session_state.raw_df = (
+                pd.read_csv(uploaded_file) if uploaded_file.name.endswith('.csv')
+                else pd.read_excel(uploaded_file)
+            )
+        df = st.session_state.raw_df
         st.markdown(f"""
-        <div class="info-strip">
-          <div class="info-pill">File: <span>{uploaded_file.name}</span></div>
-          <div class="info-pill">Rows: <span>{len(st.session_state.raw_df)}</span></div>
-          <div class="info-pill">Columns: <span>{len(st.session_state.raw_df.columns)}</span></div>
+        <div class="pill-row">
+          <div class="pill"><div class="pill-label">File</div><div class="pill-val" style="font-size:0.8rem">{uploaded_file.name}</div></div>
+          <div class="pill"><div class="pill-label">Rows</div><div class="pill-val">{len(df)}</div></div>
+          <div class="pill"><div class="pill-label">Columns</div><div class="pill-val">{len(df.columns)}</div></div>
         </div>
         """, unsafe_allow_html=True)
 
-        st.markdown("<hr class='divider'>", unsafe_allow_html=True)
-        st.markdown("**Map Your Columns:**")
-        col_names = st.session_state.raw_df.columns.tolist()
+        st.markdown('<p class="sec-desc" style="margin-top:1rem">Map your file columns:</p>', unsafe_allow_html=True)
+        cols = df.columns.tolist()
         c1, c2, c3, c4 = st.columns(4)
-        n_col = c1.selectbox("🏷️ Part Name", col_names)
-        w_col = c2.selectbox("↔️ Width", col_names)
-        l_col = c3.selectbox("↕️ Length", col_names)
-        h_col = c4.selectbox("⬆️ Height", col_names)
+        n_col = c1.selectbox("Part name column", cols)
+        w_col = c2.selectbox("Width column", cols)
+        l_col = c3.selectbox("Length column", cols)
+        h_col = c4.selectbox("Height column", cols)
 
-        if st.button("Confirm Mapping ✅"):
-            mapped_df = st.session_state.raw_df[[n_col, w_col, l_col, h_col]].copy()
-            mapped_df.columns = ['Part_Name', 'Width', 'Length', 'Height']
-            for col in ['Width', 'Length', 'Height']:
-                mapped_df[col] = pd.to_numeric(mapped_df[col], errors='coerce').fillna(0)
-            st.session_state.data['parts_df'] = mapped_df
+        if st.button("Confirm mapping →"):
+            mapped = df[[n_col, w_col, l_col, h_col]].copy()
+            mapped.columns = ['Part_Name', 'Width', 'Length', 'Height']
+            for c in ['Width', 'Length', 'Height']:
+                mapped[c] = pd.to_numeric(mapped[c], errors='coerce').fillna(0)
+            st.session_state.data['parts_df'] = mapped
             st.session_state.mapping_confirmed = True
 
         if st.session_state.mapping_confirmed:
-            st.success(f"✅ Mapping confirmed! {len(st.session_state.data['parts_df'])} parts ready for analysis.")
-            st.button("Next ➡️", on_click=next_step)
+            st.success(f"✓  {len(st.session_state.data['parts_df'])} parts mapped and ready.")
+            st.button("Continue →", on_click=next_step)
 
-# ===== STEP 3: NESTING =====
-elif st.session_state.step == 3:
+# ─────────────────────────────────────────────────────────────────────────────
+# STEP 3 — NESTING
+# ─────────────────────────────────────────────────────────────────────────────
+elif cur == 3:
     st.markdown("""
-    <div class="ui-card">
-        <div class="card-title">🔗 Step 3 — Nesting Configuration</div>
-        <div class="card-desc">Nesting allows parts to be placed inside each other (like stacking cups). Enable this if your parts support it.</div>
+    <div class="sec-head">
+      <span class="sec-num">03</span>
+      <span class="sec-title">Nesting Configuration</span>
+    </div>
+    <hr class="sec-rule">
+    <p class="sec-desc">If parts can be placed inside one another (e.g. stacked cups), enable nesting and set the insertion depth as a percentage of part height.</p>
+    """, unsafe_allow_html=True)
+
+    st.markdown("""
+    <div class="toggle-row">
+      <div class="toggle-opt">
+        <div class="toggle-label">Nesting</div>
+        <div class="toggle-sub">Allows parts to sit inside each other</div>
+      </div>
+      <div class="toggle-opt">
+        <div class="toggle-label">No Nesting</div>
+        <div class="toggle-sub">Each part occupies its full volume</div>
+      </div>
     </div>
     """, unsafe_allow_html=True)
 
-    is_nested = st.checkbox("✅ Parts can be nested into each other")
+    is_nested = st.checkbox("Enable nesting")
+    nest_pct = 0
 
     if is_nested:
-        st.markdown("<br>", unsafe_allow_html=True)
-        st.markdown("**How deep does one part sit inside another?**")
-        nest_pct = st.slider("Nesting Depth (% of part height)", 1, 100, 20,
-                             help="20% means each additional nested part only adds 20% of its height to the stack.")
+        nest_pct = st.slider("Nesting depth (% of part height)", 1, 100, 20)
         st.markdown(f"""
-        <div class="info-strip">
-          <div class="info-pill">Nesting Depth: <span>{nest_pct}%</span></div>
-          <div class="info-pill">Space Saved per Part: <span>{100 - nest_pct}%</span></div>
+        <div class="pill-row">
+          <div class="pill"><div class="pill-label">Depth</div><div class="pill-val">{nest_pct}%</div></div>
+          <div class="pill"><div class="pill-label">Space Saved</div><div class="pill-val">{100 - nest_pct}%</div></div>
+          <div class="pill"><div class="pill-label">Added Height</div><div class="pill-val">{nest_pct}% per part</div></div>
         </div>
         """, unsafe_allow_html=True)
-    else:
-        nest_pct = 0
 
     st.session_state.data.update({'nested': is_nested, 'nest_pct': nest_pct})
-    st.markdown("<br>", unsafe_allow_html=True)
-    st.button("Next ➡️", on_click=next_step)
+    st.button("Continue →", on_click=next_step)
 
-# ===== STEP 4: HANDLING =====
-elif st.session_state.step == 4:
+# ─────────────────────────────────────────────────────────────────────────────
+# STEP 4 — HANDLING
+# ─────────────────────────────────────────────────────────────────────────────
+elif cur == 4:
     st.markdown("""
-    <div class="ui-card">
-        <div class="card-title">🛡️ Step 4 — Handling Rules</div>
-        <div class="card-desc">Define how parts should be packed. Fragile parts stay upright; non-stackable parts occupy a single layer.</div>
+    <div class="sec-head">
+      <span class="sec-num">04</span>
+      <span class="sec-title">Handling Rules</span>
     </div>
+    <hr class="sec-rule">
+    <p class="sec-desc">Define physical packing constraints. Fragile parts must remain upright; non-stackable parts are packed in a single layer.</p>
     """, unsafe_allow_html=True)
 
     c1, c2 = st.columns(2)
     with c1:
-        st.markdown("**Stacking**")
-        stacking_opt = st.radio("Can parts be stacked on top of each other?", ["Yes ✅", "No ❌"])
-        stacking = (stacking_opt == "Yes ✅")
+        stacking_opt = st.radio("Stacking", ["Allowed", "Not allowed"])
     with c2:
-        st.markdown("**Fragility**")
-        fragility = st.selectbox("Part Fragility:", ["Non-Fragile 💪", "Fragile ⚠️"])
-        fragility = "Fragile" if "Fragile ⚠️" in fragility else "Non-Fragile"
+        fragility_opt = st.selectbox("Fragility", ["Non-Fragile", "Fragile"])
+
+    stacking = (stacking_opt == "Allowed")
+    fragility = fragility_opt
 
     st.markdown(f"""
-    <div class="info-strip">
-      <div class="info-pill">Stacking: <span>{"Allowed" if stacking else "Not Allowed"}</span></div>
-      <div class="info-pill">Fragility: <span>{fragility}</span></div>
+    <div class="pill-row" style="margin-top:1.5rem">
+      <div class="pill"><div class="pill-label">Stacking</div><div class="pill-val">{"Allowed" if stacking else "Disabled"}</div></div>
+      <div class="pill"><div class="pill-label">Fragility</div><div class="pill-val">{fragility}</div></div>
+      <div class="pill"><div class="pill-label">Orientation Locked</div><div class="pill-val">{"Yes" if fragility == "Fragile" else "No"}</div></div>
     </div>
     """, unsafe_allow_html=True)
 
     st.session_state.data.update({'stacking': stacking, 'fragility': fragility})
-    st.markdown("<br>", unsafe_allow_html=True)
-    st.button("Generate Results 🚀", on_click=next_step)
+    st.button("Run analysis →", on_click=next_step)
 
-# ===== STEP 5: RESULTS =====
-elif st.session_state.step == 5:
+# ─────────────────────────────────────────────────────────────────────────────
+# STEP 5 — RESULTS
+# ─────────────────────────────────────────────────────────────────────────────
+elif cur == 5:
     box = st.session_state.data['box']
     df = st.session_state.data['parts_df']
     results = []
@@ -666,48 +642,88 @@ elif st.session_state.step == 5:
         if res:
             results.append({
                 "Part Name": row['Part_Name'],
-                "Parts Per Box": res['count'],
-                "Best Orientation": res['dims'],
-                "Placement": res['orientation_label'],
-                "Utilization %": res['util'],
-                "Unused Vol (mm³)": res['unused_vol']
+                "Parts / Box": res['count'],
+                "Orientation": res['dims'],
+                "Placement": res['orientation'],
+                "Utilization": res['util'],
+                "Unused (mm³)": int(res['unused'])
             })
 
     res_df = pd.DataFrame(results)
-
-    # Summary stats
-    avg_util = res_df["Utilization %"].mean() if len(res_df) > 0 else 0
-    total_parts = res_df["Parts Per Box"].sum() if len(res_df) > 0 else 0
+    avg_util = res_df["Utilization"].mean() if len(res_df) else 0
     box_vol = box[0] * box[1] * box[2]
+    best_part = res_df.loc[res_df["Utilization"].idxmax(), "Part Name"] if len(res_df) else "—"
+
+    st.markdown("""
+    <div class="sec-head">
+      <span class="sec-num">05</span>
+      <span class="sec-title">Results</span>
+    </div>
+    <hr class="sec-rule">
+    """, unsafe_allow_html=True)
 
     st.markdown(f"""
-    <div class="ui-card">
-        <div class="card-title">✅ Results — Space Utilization</div>
-        <div class="card-desc">Analysis complete for {len(res_df)} part(s) in the selected box.</div>
-        <div class="stat-row">
-          <div class="stat-box"><div class="stat-val">{len(res_df)}</div><div class="stat-key">Parts Analyzed</div></div>
-          <div class="stat-box"><div class="stat-val">{avg_util:.1f}%</div><div class="stat-key">Avg Utilization</div></div>
-          <div class="stat-box"><div class="stat-val">{box_vol:,}</div><div class="stat-key">Box Vol (mm³)</div></div>
-          <div class="stat-box"><div class="stat-val">{box[0]}×{box[1]}×{box[2]}</div><div class="stat-key">Box Dims</div></div>
-        </div>
+    <div class="stat-grid">
+      <div class="stat-cell">
+        <div class="stat-label">Parts Analysed</div>
+        <div class="stat-value">{len(res_df)}</div>
+      </div>
+      <div class="stat-cell">
+        <div class="stat-label">Avg Utilization</div>
+        <div class="stat-value red">{avg_util:.1f}%</div>
+      </div>
+      <div class="stat-cell">
+        <div class="stat-label">Box Volume</div>
+        <div class="stat-value">{box_vol:,}</div>
+      </div>
+      <div class="stat-cell">
+        <div class="stat-label">Best Part</div>
+        <div class="stat-value" style="font-size:1.2rem;letter-spacing:0">{best_part}</div>
+      </div>
     </div>
     """, unsafe_allow_html=True)
 
-    st.markdown(render_3d_box(), unsafe_allow_html=True)
-
-    st.dataframe(res_df, use_container_width=True)
+    # Custom table
+    table_html = """
+    <table class="results-table">
+      <thead>
+        <tr>
+          <th>Part Name</th>
+          <th>Parts / Box</th>
+          <th>Orientation</th>
+          <th>Placement</th>
+          <th>Utilization</th>
+          <th>Unused (mm³)</th>
+        </tr>
+      </thead>
+      <tbody>
+    """
+    for _, row in res_df.iterrows():
+        u = row["Utilization"]
+        bar_cls = "util-bar util-high" if u >= 60 else "util-bar"
+        table_html += f"""
+        <tr>
+          <td>{row["Part Name"]}</td>
+          <td>{row["Parts / Box"]}</td>
+          <td>{row["Orientation"]}</td>
+          <td>{row["Placement"]}</td>
+          <td>
+            {u:.1f}%
+            <div class="util-bar-wrap"><div class="{bar_cls}" style="width:{min(u,100):.1f}%"></div></div>
+          </td>
+          <td>{row["Unused (mm³)"]:,}</td>
+        </tr>"""
+    table_html += "</tbody></table>"
+    st.markdown(table_html, unsafe_allow_html=True)
 
     output = io.BytesIO()
     with pd.ExcelWriter(output, engine='xlsxwriter') as writer:
-        res_df.to_excel(writer, index=False, sheet_name='AgiloPack_Results')
+        res_df.to_excel(writer, index=False, sheet_name='AgiloPack')
 
-    c1, c2 = st.columns([2, 1])
+    c1, c2 = st.columns([1, 1])
     with c1:
-        st.download_button(
-            label="📥 Download Excel Report",
-            data=output.getvalue(),
-            file_name='AgiloPack_Analysis.xlsx',
-            mime='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
-        )
+        st.download_button("Download report (.xlsx)", data=output.getvalue(),
+                           file_name='AgiloPack_Analysis.xlsx',
+                           mime='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')
     with c2:
-        st.button("🔄 Start New Process", on_click=reset_process)
+        st.button("Start over", on_click=reset_process)
