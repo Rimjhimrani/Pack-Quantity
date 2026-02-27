@@ -646,7 +646,8 @@ elif cur == 5:
                 "Parts / Box": res['count'],
                 "Orientation": res['dims'],
                 "Placement": res['orientation'],
-                "Utilization": res['util']
+                "Utilization": res['util'],
+                "Unused (mm\u00b3)": int(res['unused'])
             })
 
     res_df = pd.DataFrame(results)
