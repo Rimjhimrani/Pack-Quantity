@@ -3,6 +3,7 @@ import streamlit.components.v1 as components
 import pandas as pd
 import itertools
 import io
+import re  # ← NEW: needed for Nesting % parsing
 
 st.set_page_config(page_title="AgiloPack", layout="wide", page_icon="▪")
 
@@ -18,13 +19,11 @@ html, body, [class*="css"], .stApp {
     color: #111 !important;
 }
 
-/* ─── LAYOUT SHELL ─── */
 .block-container {
     max-width: 960px !important;
     padding: 0 2rem 4rem 2rem !important;
 }
 
-/* ─── MASTHEAD ─── */
 .masthead {
     border-bottom: 3px solid #111;
     padding: 4.5rem 0 1.2rem 0;
@@ -57,7 +56,6 @@ html, body, [class*="css"], .stApp {
     padding-left: 1rem;
 }
 
-/* ─── STEP RIBBON ─── */
 .ribbon {
     display: flex;
     border-bottom: 1px solid #ddd;
@@ -96,7 +94,6 @@ html, body, [class*="css"], .stApp {
     margin-bottom: 2px;
 }
 
-/* ─── SECTION HEADING ─── */
 .sec-head {
     display: flex;
     align-items: center;
@@ -130,7 +127,6 @@ html, body, [class*="css"], .stApp {
     max-width: 540px;
 }
 
-/* ─── DATA PILL GRID ─── */
 .pill-row {
     display: flex;
     gap: 0;
@@ -161,7 +157,6 @@ html, body, [class*="css"], .stApp {
     color: #111;
 }
 
-/* ─── BOX SELECTOR GRID ─── */
 .bx-grid {
     display: grid;
     grid-template-columns: repeat(4, 1fr);
@@ -198,7 +193,6 @@ html, body, [class*="css"], .stApp {
     margin-top: 4px;
 }
 
-/* ─── STAT GRID ─── */
 .stat-grid {
     display: grid;
     grid-template-columns: repeat(4, 1fr);
@@ -230,52 +224,6 @@ html, body, [class*="css"], .stApp {
 }
 .stat-value.red { color: #e63329; }
 
-/* ─── TABLE ─── */
-.results-table {
-    width: 100%;
-    border-collapse: collapse;
-    font-size: 0.82rem;
-    background: #fff;
-    border: 1px solid #ddd;
-    margin-bottom: 2rem;
-}
-.results-table th {
-    font-family: 'DM Mono', monospace;
-    font-size: 0.62rem;
-    letter-spacing: 1.5px;
-    text-transform: uppercase;
-    color: #999;
-    padding: 0.7rem 1rem;
-    text-align: left;
-    border-bottom: 2px solid #111;
-    background: #fff;
-    white-space: nowrap;
-}
-.results-table td {
-    padding: 0.85rem 1rem;
-    border-bottom: 1px solid #eee;
-    color: #222;
-    font-family: 'DM Mono', monospace;
-    font-size: 0.78rem;
-}
-.results-table tr:last-child td { border-bottom: none; }
-.results-table tr:hover td { background: #faf8f4; }
-.util-bar-wrap {
-    background: #f0ece5;
-    border-radius: 0;
-    height: 6px;
-    width: 100%;
-    margin-top: 4px;
-    overflow: hidden;
-}
-.util-bar {
-    height: 100%;
-    background: #e63329;
-    transition: width 0.6s ease;
-}
-.util-high { background: #2a9d5c; }
-
-/* ─── TOGGLE SECTION ─── */
 .toggle-row {
     display: flex;
     gap: 0;
@@ -304,7 +252,6 @@ html, body, [class*="css"], .stApp {
     margin-top: 3px;
 }
 
-/* ─── STREAMLIT OVERRIDES ─── */
 .stButton > button {
     background: #111 !important;
     color: #f7f4ef !important;
@@ -356,10 +303,6 @@ div[data-testid="stNumberInput"] input {
     font-size: 0.85rem !important;
 }
 
-div[data-testid="stSlider"] > div {
-    accent-color: #e63329;
-}
-
 .stSuccess, [data-testid="stAlert"] {
     background: #eef8f3 !important;
     border: 1px solid #2a9d5c !important;
@@ -375,9 +318,6 @@ div[data-testid="stSlider"] > div {
 }
 
 .stDataFrame { display: none; }
-
-div[data-baseweb="radio"] label span { color: #111 !important; }
-div[data-baseweb="checkbox"] label span { color: #111 !important; }
 
 [data-testid="stVerticalBlock"] { gap: 0.6rem !important; }
 
@@ -396,7 +336,16 @@ def reset_process():
     for k in list(st.session_state.keys()): del st.session_state[k]
     st.rerun()
 
+# ── BOXES (used in all-box evaluation) ────────────────────────────────────────
+# Unchanged — same dict as before, now also used in auto-selection
+BOXES = {
+    "A": (120, 80, 80), "B": (200, 180, 120), "C": (360, 360, 100),
+    "D": (400, 300, 220), "E": (600, 500, 400), "F": (850, 400, 250),
+    "G": (1200, 1000, 250), "H": (1500, 1200, 1000),
+}
+
 # ── Engine ────────────────────────────────────────────────────────────────────
+# UNCHANGED — same function as before
 def calculate_fit(box_dim, part_dim, nested, nest_pct, stacking, fragile):
     bl, bw, bh = box_dim
     p = list(part_dim)
@@ -427,6 +376,99 @@ def calculate_fit(box_dim, part_dim, nested, nest_pct, stacking, fragile):
     best_info["unused"] = round(bvol - best_info["used_vol"], 2)
     return best_info
 
+# ── NEW: Helpers to parse Excel column values ─────────────────────────────────
+
+def parse_yes_no(val):
+    """Convert 'Yes'/'No' (case-insensitive) to bool. Defaults to False."""
+    if pd.isna(val):
+        return False
+    return str(val).strip().lower() in ("yes", "y", "true", "1")
+
+def parse_nesting_pct(val):
+    """
+    Extract numeric % from strings like '20% along height', '35%', '0.2', etc.
+    Returns float 0–100. Defaults to 0.
+    """
+    if pd.isna(val):
+        return 0.0
+    s = str(val).strip()
+    # Already a plain number?
+    try:
+        f = float(s)
+        # If it looks like a decimal fraction (0–1 range), convert
+        return f * 100 if f <= 1.0 else f
+    except ValueError:
+        pass
+    # Pull the first number out of strings like "20% along height"
+    m = re.search(r"(\d+\.?\d*)", s)
+    return float(m.group(1)) if m else 0.0
+
+def parse_fragility(val):
+    """Return 'Fragile' or 'Non-Fragile'."""
+    return "Fragile" if parse_yes_no(val) else "Non-Fragile"
+
+def lifespan_to_density_factor(val):
+    """
+    NEW: Lifespan affects how tightly we pack.
+    Short-lived / consumable parts → pack densely (factor 1.0, no change).
+    Long-lived / durable parts   → allow some space (factor 0.85 cap on util).
+    Returns a multiplier applied to the parts-per-box count during scoring.
+    Accepts strings like 'Short', 'Medium', 'Long', or numeric years.
+    """
+    if pd.isna(val):
+        return 1.0
+    s = str(val).strip().lower()
+    if s in ("long", "high", "durable"):
+        return 0.85   # prefer a box that isn't crammed to the limit
+    if s in ("medium", "mid"):
+        return 0.92
+    # Try numeric years: ≥5 years → treat as long
+    try:
+        years = float(re.search(r"(\d+\.?\d*)", s).group(1))
+        if years >= 5:
+            return 0.85
+        if years >= 2:
+            return 0.92
+    except Exception:
+        pass
+    return 1.0   # short / consumable → pack tight
+
+# ── NEW: Auto-select best box for a single part row ──────────────────────────
+
+def best_box_for_part(row):
+    """
+    Try every box in BOXES with the per-row packing rules from the Excel file.
+    Returns a dict with the winning box key + calculate_fit result, or None.
+    """
+    fragile    = parse_fragility(row.get("Fragile", "No"))
+    stacking   = parse_yes_no(row.get("Stacking", "Yes"))
+    nested     = parse_yes_no(row.get("Nesting", "No"))
+    nest_pct   = parse_nesting_pct(row.get("Nesting %", 0))
+    density_f  = lifespan_to_density_factor(row.get("Lifespan", "Short"))
+    part_dim   = (row["Width"], row["Length"], row["Height"])
+
+    best_score, best_box_key, best_result = -1, None, None
+
+    for box_key, box_dim in BOXES.items():
+        res = calculate_fit(box_dim, part_dim, nested, nest_pct, stacking, fragile)
+        if res is None:
+            continue
+        # Score = parts-per-box adjusted by lifespan density preference,
+        # then use utilization as a tiebreaker
+        score = res["count"] * density_f + res["util"] / 1000
+        if score > best_score:
+            best_score   = score
+            best_box_key = box_key
+            best_result  = res
+
+    if best_result is None:
+        return None
+    return {
+        "box_key":  best_box_key,
+        "box_dims": BOXES[best_box_key],
+        **best_result,
+    }
+
 # ── Masthead ──────────────────────────────────────────────────────────────────
 st.markdown("""
 <div class="masthead">
@@ -438,7 +480,8 @@ st.markdown("""
 """, unsafe_allow_html=True)
 
 # ── Step Ribbon ───────────────────────────────────────────────────────────────
-STEPS = ["Choose Box", "Upload Data", "Nesting", "Handling", "Results"]
+# CHANGED: Steps reduced from 5 to 2 — Upload then Results
+STEPS = ["Upload Data", "Results"]
 cur = st.session_state.step
 ribbon_html = '<div class="ribbon">'
 for i, s in enumerate(STEPS, 1):
@@ -448,24 +491,26 @@ ribbon_html += '</div>'
 st.markdown(ribbon_html, unsafe_allow_html=True)
 
 # ─────────────────────────────────────────────────────────────────────────────
-# STEP 1 — BOX
+# STEP 1 — UPLOAD  (replaces old steps 1–4)
+# All box/nesting/handling configuration is now read from the Excel file.
 # ─────────────────────────────────────────────────────────────────────────────
 if cur == 1:
     st.markdown("""
     <div class="sec-head">
       <span class="sec-num">01</span>
-      <span class="sec-title">Select Box Size</span>
+      <span class="sec-title">Upload Part Data</span>
     </div>
     <hr class="sec-rule">
-    <p class="sec-desc">Choose a standard shipping configuration or define custom dimensions in millimetres (L × W × H).</p>
+    <p class="sec-desc">
+      Upload a CSV or Excel file containing your parts list. The file must include the columns:<br>
+      <strong>Part Name, Length, Width, Height, Weight, Lifespan, Fragile, Stacking, Nesting, Nesting&nbsp;%</strong><br><br>
+      Fragile / Stacking / Nesting accept <em>Yes</em> or <em>No</em>.
+      Nesting&nbsp;% accepts values like <em>"20% along height"</em> or plain numbers.
+      The best box from the standard catalogue will be chosen automatically for each part.
+    </p>
     """, unsafe_allow_html=True)
 
-    BOXES = {
-        "A": (120, 80, 80), "B": (200, 180, 120), "C": (360, 360, 100),
-        "D": (400, 300, 220), "E": (600, 500, 400), "F": (850, 400, 250),
-        "G": (1200, 1000, 250), "H": (1500, 1200, 1000),
-    }
-
+    # Show available box catalogue for reference
     grid_html = '<div class="bx-grid">'
     for k, v in BOXES.items():
         grid_html += f"""<div class="bx-item">
@@ -476,188 +521,96 @@ if cur == 1:
     grid_html += '</div>'
     st.markdown(grid_html, unsafe_allow_html=True)
 
-    box_type = st.radio("Input type", ["Predefined", "Custom"], horizontal=True)
-
-    if box_type == "Predefined":
-        opts = {f"Option {k} — {v[0]}×{v[1]}×{v[2]}": v for k, v in BOXES.items()}
-        sel = st.selectbox("Box selection", list(opts.keys()))
-        dims = opts[sel]
-    else:
-        c1, c2, c3 = st.columns(3)
-        l = c1.number_input("Length (mm)", min_value=1.0, value=50.0)
-        w = c2.number_input("Width (mm)", min_value=1.0, value=50.0)
-        h = c3.number_input("Height (mm)", min_value=1.0, value=50.0)
-        dims = (l, w, h)
-
-    st.session_state.data['box'] = dims
-    st.markdown(f"""
-    <div class="pill-row">
-      <div class="pill"><div class="pill-label">Length</div><div class="pill-val">{dims[0]} mm</div></div>
-      <div class="pill"><div class="pill-label">Width</div><div class="pill-val">{dims[1]} mm</div></div>
-      <div class="pill"><div class="pill-label">Height</div><div class="pill-val">{dims[2]} mm</div></div>
-      <div class="pill"><div class="pill-label">Volume</div><div class="pill-val">{int(dims[0]*dims[1]*dims[2]):,} mm³</div></div>
-    </div>
-    """, unsafe_allow_html=True)
-
-    st.button("Continue →", on_click=next_step)
-
-# ─────────────────────────────────────────────────────────────────────────────
-# STEP 2 — DATA
-# ─────────────────────────────────────────────────────────────────────────────
-elif cur == 2:
-    st.markdown("""
-    <div class="sec-head">
-      <span class="sec-num">02</span>
-      <span class="sec-title">Upload Part Data</span>
-    </div>
-    <hr class="sec-rule">
-    <p class="sec-desc">Upload a CSV or Excel file with your parts list, then map columns to the correct dimension fields.</p>
-    """, unsafe_allow_html=True)
-
     uploaded_file = st.file_uploader("Drop file here", type=["csv", "xlsx"])
 
     if uploaded_file:
+        # ── Parse the file ──────────────────────────────────────────────────
         if 'raw_df' not in st.session_state:
             st.session_state.raw_df = (
-                pd.read_csv(uploaded_file) if uploaded_file.name.endswith('.csv')
+                pd.read_csv(uploaded_file)
+                if uploaded_file.name.endswith('.csv')
                 else pd.read_excel(uploaded_file)
             )
         df = st.session_state.raw_df
+
+        # ── NEW: Normalise column names (strip whitespace, title-case) ──────
+        df.columns = [c.strip() for c in df.columns]
+
+        # ── Validate required columns ───────────────────────────────────────
+        REQUIRED = {"Part Name", "Length", "Width", "Height",
+                    "Fragile", "Stacking", "Nesting", "Nesting %"}
+        missing = REQUIRED - set(df.columns)
+        if missing:
+            st.error(f"Missing columns: {', '.join(sorted(missing))}")
+            st.stop()
+
+        # ── Coerce numeric dims ─────────────────────────────────────────────
+        for c in ["Width", "Length", "Height"]:
+            df[c] = pd.to_numeric(df[c], errors="coerce").fillna(0)
+
         st.markdown(f"""
         <div class="pill-row">
-          <div class="pill"><div class="pill-label">File</div><div class="pill-val" style="font-size:0.8rem">{uploaded_file.name}</div></div>
-          <div class="pill"><div class="pill-label">Rows</div><div class="pill-val">{len(df)}</div></div>
-          <div class="pill"><div class="pill-label">Columns</div><div class="pill-val">{len(df.columns)}</div></div>
+          <div class="pill"><div class="pill-label">File</div>
+            <div class="pill-val" style="font-size:0.8rem">{uploaded_file.name}</div></div>
+          <div class="pill"><div class="pill-label">Rows</div>
+            <div class="pill-val">{len(df)}</div></div>
+          <div class="pill"><div class="pill-label">Columns</div>
+            <div class="pill-val">{len(df.columns)}</div></div>
+          <div class="pill"><div class="pill-label">Boxes in catalogue</div>
+            <div class="pill-val">{len(BOXES)}</div></div>
         </div>
         """, unsafe_allow_html=True)
 
-        st.markdown('<p class="sec-desc" style="margin-top:1rem">Map your file columns:</p>', unsafe_allow_html=True)
-        cols = df.columns.tolist()
-        c1, c2, c3, c4 = st.columns(4)
-        n_col = c1.selectbox("Part name column", cols)
-        w_col = c2.selectbox("Width column", cols)
-        l_col = c3.selectbox("Length column", cols)
-        h_col = c4.selectbox("Height column", cols)
-
-        if st.button("Confirm mapping →"):
-            mapped = df[[n_col, w_col, l_col, h_col]].copy()
-            mapped.columns = ['Part_Name', 'Width', 'Length', 'Height']
-            for c in ['Width', 'Length', 'Height']:
-                mapped[c] = pd.to_numeric(mapped[c], errors='coerce').fillna(0)
-            st.session_state.data['parts_df'] = mapped
-            st.session_state.mapping_confirmed = True
-
-        if st.session_state.mapping_confirmed:
-            st.success(f"✓  {len(st.session_state.data['parts_df'])} parts mapped and ready.")
-            st.button("Continue →", on_click=next_step)
+        st.session_state.data['parts_df'] = df
+        st.session_state.mapping_confirmed = True
+        st.success(f"✓  {len(df)} parts loaded. Rules will be read from the file.")
+        st.button("Run analysis →", on_click=next_step)
 
 # ─────────────────────────────────────────────────────────────────────────────
-# STEP 3 — NESTING
+# STEP 2 — RESULTS  (replaces old step 5)
 # ─────────────────────────────────────────────────────────────────────────────
-elif cur == 3:
-    st.markdown("""
-    <div class="sec-head">
-      <span class="sec-num">03</span>
-      <span class="sec-title">Nesting Configuration</span>
-    </div>
-    <hr class="sec-rule">
-    <p class="sec-desc">If parts can be placed inside one another (e.g. stacked cups), enable nesting and set the insertion depth as a percentage of part height.</p>
-    """, unsafe_allow_html=True)
-
-    st.markdown("""
-    <div class="toggle-row">
-      <div class="toggle-opt">
-        <div class="toggle-label">Nesting</div>
-        <div class="toggle-sub">Allows parts to sit inside each other</div>
-      </div>
-      <div class="toggle-opt">
-        <div class="toggle-label">No Nesting</div>
-        <div class="toggle-sub">Each part occupies its full volume</div>
-      </div>
-    </div>
-    """, unsafe_allow_html=True)
-
-    is_nested = st.checkbox("Enable nesting")
-    nest_pct = 0
-
-    if is_nested:
-        nest_pct = st.slider("Nesting depth (% of part height)", 1, 100, 20)
-        st.markdown(f"""
-        <div class="pill-row">
-          <div class="pill"><div class="pill-label">Depth</div><div class="pill-val">{nest_pct}%</div></div>
-          <div class="pill"><div class="pill-label">Space Saved</div><div class="pill-val">{100 - nest_pct}%</div></div>
-          <div class="pill"><div class="pill-label">Added Height</div><div class="pill-val">{nest_pct}% per part</div></div>
-        </div>
-        """, unsafe_allow_html=True)
-
-    st.session_state.data.update({'nested': is_nested, 'nest_pct': nest_pct})
-    st.button("Continue →", on_click=next_step)
-
-# ─────────────────────────────────────────────────────────────────────────────
-# STEP 4 — HANDLING
-# ─────────────────────────────────────────────────────────────────────────────
-elif cur == 4:
-    st.markdown("""
-    <div class="sec-head">
-      <span class="sec-num">04</span>
-      <span class="sec-title">Handling Rules</span>
-    </div>
-    <hr class="sec-rule">
-    <p class="sec-desc">Define physical packing constraints. Fragile parts must remain upright; non-stackable parts are packed in a single layer.</p>
-    """, unsafe_allow_html=True)
-
-    c1, c2 = st.columns(2)
-    with c1:
-        stacking_opt = st.radio("Stacking", ["Allowed", "Not allowed"])
-    with c2:
-        fragility_opt = st.selectbox("Fragility", ["Non-Fragile", "Fragile"])
-
-    stacking = (stacking_opt == "Allowed")
-    fragility = fragility_opt
-
-    st.markdown(f"""
-    <div class="pill-row" style="margin-top:1.5rem">
-      <div class="pill"><div class="pill-label">Stacking</div><div class="pill-val">{"Allowed" if stacking else "Disabled"}</div></div>
-      <div class="pill"><div class="pill-label">Fragility</div><div class="pill-val">{fragility}</div></div>
-      <div class="pill"><div class="pill-label">Orientation Locked</div><div class="pill-val">{"Yes" if fragility == "Fragile" else "No"}</div></div>
-    </div>
-    """, unsafe_allow_html=True)
-
-    st.session_state.data.update({'stacking': stacking, 'fragility': fragility})
-    st.button("Run analysis →", on_click=next_step)
-
-# ─────────────────────────────────────────────────────────────────────────────
-# STEP 5 — RESULTS
-# ─────────────────────────────────────────────────────────────────────────────
-elif cur == 5:
-    box = st.session_state.data['box']
+elif cur == 2:
     df = st.session_state.data['parts_df']
     results = []
 
     for _, row in df.iterrows():
-        res = calculate_fit(
-            box, (row['Width'], row['Length'], row['Height']),
-            st.session_state.data['nested'], st.session_state.data['nest_pct'],
-            st.session_state.data['stacking'], st.session_state.data['fragility']
-        )
-        if res:
-            results.append({
-                "Part Name": row['Part_Name'],
-                "Parts / Box": res['count'],
-                "Orientation": res['dims'],
-                "Placement": res['orientation'],
-                "Utilization": res['util'],
-                "Unused (mm\u00b3)": int(res['unused'])
-            })
+        best = best_box_for_part(row)   # ← NEW: per-part auto box selection
+        if best is None:
+            continue
+
+        # ── NEW: re-parse per-part flags for display ────────────────────────
+        fragile   = parse_fragility(row.get("Fragile", "No"))
+        stacking  = parse_yes_no(row.get("Stacking", "Yes"))
+        nested    = parse_yes_no(row.get("Nesting", "No"))
+        nest_pct  = parse_nesting_pct(row.get("Nesting %", 0))
+        lifespan  = str(row.get("Lifespan", "—")).strip() if not pd.isna(row.get("Lifespan", float("nan"))) else "—"
+        box_lbl   = f"Option {best['box_key']} ({best['box_dims'][0]}×{best['box_dims'][1]}×{best['box_dims'][2]})"
+
+        results.append({
+            "Part Name":       row["Part Name"],
+            "Best Box":        box_lbl,
+            "Parts / Box":     best["count"],
+            "Orientation":     best["dims"],
+            "Placement":       best["orientation"],
+            "Utilization":     best["util"],
+            "Unused (mm³)":    int(best["unused"]),
+            # NEW columns sourced from file
+            "Fragile":         fragile,
+            "Stacking":        "Yes" if stacking else "No",
+            "Nesting":         f"Yes ({nest_pct:.0f}%)" if nested else "No",
+            "Lifespan":        lifespan,
+        })
 
     res_df = pd.DataFrame(results)
-    avg_util = res_df["Utilization"].mean() if len(res_df) else 0
-    box_vol = box[0] * box[1] * box[2]
+
+    avg_util  = res_df["Utilization"].mean() if len(res_df) else 0
     best_part = res_df.loc[res_df["Utilization"].idxmax(), "Part Name"] if len(res_df) else "—"
+    # Most common recommended box
+    top_box   = res_df["Best Box"].value_counts().idxmax() if len(res_df) else "—"
 
     st.markdown("""
     <div class="sec-head">
-      <span class="sec-num">05</span>
+      <span class="sec-num">02</span>
       <span class="sec-title">Results</span>
     </div>
     <hr class="sec-rule">
@@ -674,25 +627,26 @@ elif cur == 5:
         <div class="stat-value red">{avg_util:.1f}%</div>
       </div>
       <div class="stat-cell">
-        <div class="stat-label">Box Volume</div>
-        <div class="stat-value">{box_vol:,}</div>
+        <div class="stat-label">Top Box</div>
+        <div class="stat-value" style="font-size:1rem;letter-spacing:0">{top_box}</div>
       </div>
       <div class="stat-cell">
-        <div class="stat-label">Best Part</div>
+        <div class="stat-label">Best Fit Part</div>
         <div class="stat-value" style="font-size:1.2rem;letter-spacing:0">{best_part}</div>
       </div>
     </div>
     """, unsafe_allow_html=True)
 
-    # Build table rows
+    # ── Build results table ─────────────────────────────────────────────────
     rows_html = ""
     for _, row in res_df.iterrows():
         u = float(row["Utilization"])
         bar_color = "#2a9d5c" if u >= 60 else "#e63329"
-        unused_val = int(row["Unused (mm\u00b3)"])
+        unused_val = int(row["Unused (mm³)"])
         rows_html += (
             f"<tr>"
             f"<td>{row['Part Name']}</td>"
+            f"<td>{row['Best Box']}</td>"
             f"<td>{row['Parts / Box']}</td>"
             f"<td>{row['Orientation']}</td>"
             f"<td>{row['Placement']}</td>"
@@ -700,6 +654,10 @@ elif cur == 5:
             f"<div style='background:#f0ece5;height:6px;width:100%;margin-top:4px;overflow:hidden'>"
             f"<div style='height:100%;width:{min(u,100):.1f}%;background:{bar_color}'></div></div></td>"
             f"<td>{unused_val:,}</td>"
+            f"<td>{row['Fragile']}</td>"
+            f"<td>{row['Stacking']}</td>"
+            f"<td>{row['Nesting']}</td>"
+            f"<td>{row['Lifespan']}</td>"
             f"</tr>"
         )
 
@@ -719,23 +677,28 @@ elif cur == 5:
     </style>
     <table>
       <thead><tr>
-        <th>Part Name</th><th>Parts / Box</th><th>Orientation</th>
-        <th>Placement</th><th>Utilization</th><th>Unused (mm3)</th>
+        <th>Part Name</th><th>Best Box</th><th>Parts / Box</th><th>Orientation</th>
+        <th>Placement</th><th>Utilization</th><th>Unused (mm³)</th>
+        <th>Fragile</th><th>Stacking</th><th>Nesting</th><th>Lifespan</th>
       </tr></thead>
       <tbody>{rows_html}</tbody>
     </table>
     """
-    components.html(table_html, height=max(200, len(res_df) * 70 + 60), scrolling=False)
+    components.html(table_html, height=max(200, len(res_df) * 70 + 60), scrolling=True)
 
+    # ── Export ──────────────────────────────────────────────────────────────
     output = io.BytesIO()
-    export_df = res_df.rename(columns={"Unused (mm\u00b3)": "Unused (mm3)"})
+    export_df = res_df.rename(columns={"Unused (mm³)": "Unused (mm3)"})
     with pd.ExcelWriter(output, engine='xlsxwriter') as writer:
         export_df.to_excel(writer, index=False, sheet_name='AgiloPack')
 
     c1, c2 = st.columns([1, 1])
     with c1:
-        st.download_button("Download report (.xlsx)", data=output.getvalue(),
-                           file_name='AgiloPack_Analysis.xlsx',
-                           mime='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')
+        st.download_button(
+            "Download report (.xlsx)",
+            data=output.getvalue(),
+            file_name='AgiloPack_Analysis.xlsx',
+            mime='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+        )
     with c2:
         st.button("Start over", on_click=reset_process)
