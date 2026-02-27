@@ -27,7 +27,7 @@ html, body, [class*="css"], .stApp {
 /* ─── MASTHEAD ─── */
 .masthead {
     border-bottom: 3px solid #111;
-    padding: 2.5rem 0 1.2rem 0;
+    padding: 4.5rem 0 1.2rem 0;
     margin-bottom: 0;
     display: flex;
     align-items: baseline;
