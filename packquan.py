@@ -438,7 +438,7 @@ st.markdown("""
 """, unsafe_allow_html=True)
 
 # ── Step Ribbon ───────────────────────────────────────────────────────────────
-STEPS = ["Box", "Data", "Nesting", "Handling", "Results"]
+STEPS = ["Choose Box", "Upload Data", "Nesting", "Handling", "Results"]
 cur = st.session_state.step
 ribbon_html = '<div class="ribbon">'
 for i, s in enumerate(STEPS, 1):
