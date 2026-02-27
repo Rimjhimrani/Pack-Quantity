@@ -336,13 +336,49 @@ def reset_process():
     for k in list(st.session_state.keys()): del st.session_state[k]
     st.rerun()
 
-# ── BOXES (used in all-box evaluation) ────────────────────────────────────────
-# Unchanged — same dict as before, now also used in auto-selection
+# ── BOXES with size-bracket tiers ────────────────────────────────────────────
+# Each box is tagged with a tier: Small / Medium / Large / Very Large.
+# Tier is chosen by the longest part dimension (L, W, or H):
+#   Small     → max dim  ≤ 150 mm   → try A, B
+#   Medium    → max dim  ≤ 380 mm   → try C, D
+#   Large     → max dim  ≤ 900 mm   → try E, F
+#   Very Large→ max dim  > 900 mm   → try G, H
+#
+# Within a tier the best-fit box (highest parts-per-box, util as tiebreaker)
+# is selected.  If NO box in the primary tier can fit even one part, the next
+# tier up is tried automatically.
+
 BOXES = {
-    "A": (120, 80, 80), "B": (200, 180, 120), "C": (360, 360, 100),
-    "D": (400, 300, 220), "E": (600, 500, 400), "F": (850, 400, 250),
-    "G": (1200, 1000, 250), "H": (1500, 1200, 1000),
+    "A": (120,  80,   80),
+    "B": (200,  180,  120),
+    "C": (360,  360,  100),
+    "D": (400,  300,  220),
+    "E": (600,  500,  400),
+    "F": (850,  400,  250),
+    "G": (1200, 1000, 250),
+    "H": (1500, 1200, 1000),
 }
+
+# Tier bands: (max-part-dim upper bound, [candidate box keys])
+# Ordered from smallest to largest so escalation is natural.
+TIER_BANDS = [
+    (150,  ["A", "B"]),           # Small
+    (380,  ["C", "D"]),           # Medium
+    (900,  ["E", "F"]),           # Large
+    (float("inf"), ["G", "H"]),   # Very Large
+]
+
+def tier_candidates(part_dim):
+    """
+    Return candidate box keys for the part's size bracket.
+    part_dim: (W, L, H) tuple of floats.
+    Escalates to the next tier if needed (handled in best_box_for_part).
+    """
+    max_dim = max(part_dim)
+    for upper, keys in TIER_BANDS:
+        if max_dim <= upper:
+            return keys
+    return ["G", "H"]  # fallback
 
 # ── Engine ────────────────────────────────────────────────────────────────────
 # UNCHANGED — same function as before
@@ -433,41 +469,75 @@ def lifespan_to_density_factor(val):
         pass
     return 1.0   # short / consumable → pack tight
 
-# ── NEW: Auto-select best box for a single part row ──────────────────────────
+# ── Auto-select best box for a single part row ────────────────────────────────
 
 def best_box_for_part(row):
     """
-    Try every box in BOXES with the per-row packing rules from the Excel file.
-    Returns a dict with the winning box key + calculate_fit result, or None.
+    Select the best box using size-bracket tiers:
+      Small (max dim ≤ 150)  → A, B
+      Medium (≤ 380)         → C, D
+      Large (≤ 900)          → E, F
+      Very Large (> 900)     → G, H
+
+    Within the matched tier, pick the box with the highest parts-per-box
+    (weighted by lifespan density factor), using utilization as a tiebreaker.
+
+    If no box in the primary tier fits the part at all, escalates to the next
+    tier up until a valid fit is found.
     """
-    fragile    = parse_fragility(row.get("Fragile", "No"))
-    stacking   = parse_yes_no(row.get("Stacking", "Yes"))
-    nested     = parse_yes_no(row.get("Nesting", "No"))
-    nest_pct   = parse_nesting_pct(row.get("Nesting %", 0))
-    density_f  = lifespan_to_density_factor(row.get("Lifespan", "Short"))
-    part_dim   = (row["Width"], row["Length"], row["Height"])
+    fragile   = parse_fragility(row.get("Fragile", "No"))
+    stacking  = parse_yes_no(row.get("Stacking", "Yes"))
+    nested    = parse_yes_no(row.get("Nesting", "No"))
+    nest_pct  = parse_nesting_pct(row.get("Nesting %", 0))
+    density_f = lifespan_to_density_factor(row.get("Lifespan", "Short"))
+    part_dim  = (row["Width"], row["Length"], row["Height"])
+    max_dim   = max(part_dim)
 
-    best_score, best_box_key, best_result = -1, None, None
+    # Build an ordered list of tiers to try, starting from the matched tier
+    tier_order = []
+    matched = False
+    for upper, keys in TIER_BANDS:
+        if not matched and max_dim <= upper:
+            matched = True
+        if matched:
+            tier_order.append(keys)
 
-    for box_key, box_dim in BOXES.items():
-        res = calculate_fit(box_dim, part_dim, nested, nest_pct, stacking, fragile)
-        if res is None:
-            continue
-        # Score = parts-per-box adjusted by lifespan density preference,
-        # then use utilization as a tiebreaker
-        score = res["count"] * density_f + res["util"] / 1000
-        if score > best_score:
-            best_score   = score
-            best_box_key = box_key
-            best_result  = res
+    # Fallback: if somehow nothing matched, try all tiers
+    if not tier_order:
+        tier_order = [keys for _, keys in TIER_BANDS]
 
-    if best_result is None:
-        return None
-    return {
-        "box_key":  best_box_key,
-        "box_dims": BOXES[best_box_key],
-        **best_result,
-    }
+    for candidate_keys in tier_order:
+        best_score, best_box_key, best_result = -1, None, None
+
+        for box_key in candidate_keys:
+            box_dim = BOXES[box_key]
+            res = calculate_fit(box_dim, part_dim, nested, nest_pct, stacking, fragile)
+            if res is None:
+                continue
+            # Primary sort: parts-per-box (adjusted by density preference)
+            # Tiebreaker:  utilization (scaled small so it never overrides count)
+            score = res["count"] * density_f + res["util"] / 1000
+            if score > best_score:
+                best_score   = score
+                best_box_key = box_key
+                best_result  = res
+
+        if best_result is not None:
+            # Determine the human-readable tier name for this box
+            tier_name = next(
+                (["Small", "Medium", "Large", "Very Large"][i]
+                 for i, (_, keys) in enumerate(TIER_BANDS)
+                 if best_box_key in keys),
+                "—"
+            )
+            return {
+                "box_key":   best_box_key,
+                "box_dims":  BOXES[best_box_key],
+                "tier":      tier_name,
+                **best_result,
+            }
+
+    return None  # part doesn't fit in any box
 
 # ── Masthead ──────────────────────────────────────────────────────────────────
 st.markdown("""
@@ -588,13 +658,13 @@ elif cur == 2:
 
         results.append({
             "Part Name":       row["Part Name"],
+            "Tier":            best.get("tier", "—"),   # ← Small/Medium/Large/Very Large
             "Best Box":        box_lbl,
             "Parts / Box":     best["count"],
             "Orientation":     best["dims"],
             "Placement":       best["orientation"],
             "Utilization":     best["util"],
             "Unused (mm³)":    int(best["unused"]),
-            # NEW columns sourced from file
             "Fragile":         fragile,
             "Stacking":        "Yes" if stacking else "No",
             "Nesting":         f"Yes ({nest_pct:.0f}%)" if nested else "No",
@@ -643,9 +713,18 @@ elif cur == 2:
         u = float(row["Utilization"])
         bar_color = "#2a9d5c" if u >= 60 else "#e63329"
         unused_val = int(row["Unused (mm³)"])
+        # Tier badge colour
+        tier_colors = {"Small": "#4a90d9", "Medium": "#e6a817",
+                       "Large": "#e63329",  "Very Large": "#7b47c2"}
+        tier = row.get("Tier", "—")
+        tier_bg = tier_colors.get(tier, "#aaa")
+
         rows_html += (
             f"<tr>"
             f"<td>{row['Part Name']}</td>"
+            f"<td><span style='background:{tier_bg};color:#fff;padding:2px 8px;"
+            f"font-size:0.6rem;letter-spacing:1px;text-transform:uppercase'>"
+            f"{tier}</span></td>"
             f"<td>{row['Best Box']}</td>"
             f"<td>{row['Parts / Box']}</td>"
             f"<td>{row['Orientation']}</td>"
@@ -677,8 +756,8 @@ elif cur == 2:
     </style>
     <table>
       <thead><tr>
-        <th>Part Name</th><th>Best Box</th><th>Parts / Box</th><th>Orientation</th>
-        <th>Placement</th><th>Utilization</th><th>Unused (mm³)</th>
+        <th>Part Name</th><th>Tier</th><th>Best Box</th><th>Parts / Box</th>
+        <th>Orientation</th><th>Placement</th><th>Utilization</th><th>Unused (mm³)</th>
         <th>Fragile</th><th>Stacking</th><th>Nesting</th><th>Lifespan</th>
       </tr></thead>
       <tbody>{rows_html}</tbody>
