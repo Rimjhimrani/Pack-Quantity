@@ -337,17 +337,6 @@ def reset_process():
     st.rerun()
 
 # ── BOXES with size-bracket tiers ────────────────────────────────────────────
-# Each box is tagged with a tier: Small / Medium / Large / Very Large.
-# Tier is chosen by the longest part dimension (L, W, or H):
-#   Small     → max dim  ≤ 150 mm   → try A, B
-#   Medium    → max dim  ≤ 380 mm   → try C, D
-#   Large     → max dim  ≤ 900 mm   → try E, F
-#   Very Large→ max dim  > 900 mm   → try G, H
-#
-# Within a tier the best-fit box (highest parts-per-box, util as tiebreaker)
-# is selected.  If NO box in the primary tier can fit even one part, the next
-# tier up is tried automatically.
-
 BOXES = {
     "A": (120,  80,   80),
     "B": (200,  180,  120),
@@ -359,29 +348,21 @@ BOXES = {
     "H": (1500, 1200, 1000),
 }
 
-# Tier bands: (max-part-dim upper bound, [candidate box keys])
-# Ordered from smallest to largest so escalation is natural.
 TIER_BANDS = [
-    (150,  ["A", "B"]),           # Small
-    (380,  ["C", "D"]),           # Medium
-    (900,  ["E", "F"]),           # Large
-    (float("inf"), ["G", "H"]),   # Very Large
+    (150,  ["A", "B"]),
+    (380,  ["C", "D"]),
+    (900,  ["E", "F"]),
+    (float("inf"), ["G", "H"]),
 ]
 
 def tier_candidates(part_dim):
-    """
-    Return candidate box keys for the part's size bracket.
-    part_dim: (W, L, H) tuple of floats.
-    Escalates to the next tier if needed (handled in best_box_for_part).
-    """
     max_dim = max(part_dim)
     for upper, keys in TIER_BANDS:
         if max_dim <= upper:
             return keys
-    return ["G", "H"]  # fallback
+    return ["G", "H"]
 
 # ── Engine ────────────────────────────────────────────────────────────────────
-# UNCHANGED — same function as before
 def calculate_fit(box_dim, part_dim, nested, nest_pct, stacking, fragile):
     bl, bw, bh = box_dim
     p = list(part_dim)
@@ -412,53 +393,35 @@ def calculate_fit(box_dim, part_dim, nested, nest_pct, stacking, fragile):
     best_info["unused"] = round(bvol - best_info["used_vol"], 2)
     return best_info
 
-# ── NEW: Helpers to parse Excel column values ─────────────────────────────────
-
+# ── Helpers to parse Excel column values ──────────────────────────────────────
 def parse_yes_no(val):
-    """Convert 'Yes'/'No' (case-insensitive) to bool. Defaults to False."""
     if pd.isna(val):
         return False
     return str(val).strip().lower() in ("yes", "y", "true", "1")
 
 def parse_nesting_pct(val):
-    """
-    Extract numeric % from strings like '20% along height', '35%', '0.2', etc.
-    Returns float 0–100. Defaults to 0.
-    """
     if pd.isna(val):
         return 0.0
     s = str(val).strip()
-    # Already a plain number?
     try:
         f = float(s)
-        # If it looks like a decimal fraction (0–1 range), convert
         return f * 100 if f <= 1.0 else f
     except ValueError:
         pass
-    # Pull the first number out of strings like "20% along height"
     m = re.search(r"(\d+\.?\d*)", s)
     return float(m.group(1)) if m else 0.0
 
 def parse_fragility(val):
-    """Return 'Fragile' or 'Non-Fragile'."""
     return "Fragile" if parse_yes_no(val) else "Non-Fragile"
 
 def lifespan_to_density_factor(val):
-    """
-    NEW: Lifespan affects how tightly we pack.
-    Short-lived / consumable parts → pack densely (factor 1.0, no change).
-    Long-lived / durable parts   → allow some space (factor 0.85 cap on util).
-    Returns a multiplier applied to the parts-per-box count during scoring.
-    Accepts strings like 'Short', 'Medium', 'Long', or numeric years.
-    """
     if pd.isna(val):
         return 1.0
     s = str(val).strip().lower()
     if s in ("long", "high", "durable"):
-        return 0.85   # prefer a box that isn't crammed to the limit
+        return 0.85
     if s in ("medium", "mid"):
         return 0.92
-    # Try numeric years: ≥5 years → treat as long
     try:
         years = float(re.search(r"(\d+\.?\d*)", s).group(1))
         if years >= 5:
@@ -467,33 +430,28 @@ def lifespan_to_density_factor(val):
             return 0.92
     except Exception:
         pass
-    return 1.0   # short / consumable → pack tight
+    return 1.0
 
 # ── Auto-select best box for a single part row ────────────────────────────────
-
-def best_box_for_part(row):
+def best_box_for_part(row, overrides=None):
     """
-    Select the best box using size-bracket tiers:
-      Small (max dim ≤ 150)  → A, B
-      Medium (≤ 380)         → C, D
-      Large (≤ 900)          → E, F
-      Very Large (> 900)     → G, H
-
-    Within the matched tier, pick the box with the highest parts-per-box
-    (weighted by lifespan density factor), using utilization as a tiebreaker.
-
-    If no box in the primary tier fits the part at all, escalates to the next
-    tier up until a valid fit is found.
+    Select best box using size-bracket tiers.
+    If `overrides` dict is provided, those values replace the row's handling fields.
     """
-    fragile   = parse_fragility(row.get("Fragile", "No"))
-    stacking  = parse_yes_no(row.get("Stacking", "Yes"))
-    nested    = parse_yes_no(row.get("Nesting", "No"))
-    nest_pct  = parse_nesting_pct(row.get("Nesting %", 0))
+    # Apply overrides if supplied (single-row manual override feature)
+    def get_field(field):
+        if overrides and field in overrides:
+            return overrides[field]
+        return row.get(field, None)
+
+    fragile   = parse_fragility(get_field("Fragile"))
+    stacking  = parse_yes_no(get_field("Stacking") if get_field("Stacking") is not None else "Yes")
+    nested    = parse_yes_no(get_field("Nesting"))
+    nest_pct  = parse_nesting_pct(get_field("Nesting %"))
     density_f = lifespan_to_density_factor(row.get("Lifespan", "Short"))
     part_dim  = (row["Width"], row["Length"], row["Height"])
     max_dim   = max(part_dim)
 
-    # Build an ordered list of tiers to try, starting from the matched tier
     tier_order = []
     matched = False
     for upper, keys in TIER_BANDS:
@@ -502,7 +460,6 @@ def best_box_for_part(row):
         if matched:
             tier_order.append(keys)
 
-    # Fallback: if somehow nothing matched, try all tiers
     if not tier_order:
         tier_order = [keys for _, keys in TIER_BANDS]
 
@@ -514,8 +471,6 @@ def best_box_for_part(row):
             res = calculate_fit(box_dim, part_dim, nested, nest_pct, stacking, fragile)
             if res is None:
                 continue
-            # Primary sort: parts-per-box (adjusted by density preference)
-            # Tiebreaker:  utilization (scaled small so it never overrides count)
             score = res["count"] * density_f + res["util"] / 1000
             if score > best_score:
                 best_score   = score
@@ -523,7 +478,6 @@ def best_box_for_part(row):
                 best_result  = res
 
         if best_result is not None:
-            # Determine the human-readable tier name for this box
             tier_name = next(
                 (["Small", "Medium", "Large", "Very Large"][i]
                  for i, (_, keys) in enumerate(TIER_BANDS)
@@ -537,7 +491,7 @@ def best_box_for_part(row):
                 **best_result,
             }
 
-    return None  # part doesn't fit in any box
+    return None
 
 # ── Masthead ──────────────────────────────────────────────────────────────────
 st.markdown("""
@@ -550,7 +504,6 @@ st.markdown("""
 """, unsafe_allow_html=True)
 
 # ── Step Ribbon ───────────────────────────────────────────────────────────────
-# CHANGED: Steps reduced from 5 to 2 — Upload then Results
 STEPS = ["Upload Data", "Results"]
 cur = st.session_state.step
 ribbon_html = '<div class="ribbon">'
@@ -561,8 +514,7 @@ ribbon_html += '</div>'
 st.markdown(ribbon_html, unsafe_allow_html=True)
 
 # ─────────────────────────────────────────────────────────────────────────────
-# STEP 1 — UPLOAD  (replaces old steps 1–4)
-# All box/nesting/handling configuration is now read from the Excel file.
+# STEP 1 — UPLOAD
 # ─────────────────────────────────────────────────────────────────────────────
 if cur == 1:
     st.markdown("""
@@ -580,7 +532,6 @@ if cur == 1:
     </p>
     """, unsafe_allow_html=True)
 
-    # Show available box catalogue for reference
     grid_html = '<div class="bx-grid">'
     for k, v in BOXES.items():
         grid_html += f"""<div class="bx-item">
@@ -594,7 +545,6 @@ if cur == 1:
     uploaded_file = st.file_uploader("Drop file here", type=["csv", "xlsx"])
 
     if uploaded_file:
-        # ── Parse the file ──────────────────────────────────────────────────
         if 'raw_df' not in st.session_state:
             st.session_state.raw_df = (
                 pd.read_csv(uploaded_file)
@@ -602,11 +552,8 @@ if cur == 1:
                 else pd.read_excel(uploaded_file)
             )
         df = st.session_state.raw_df
-
-        # ── NEW: Normalise column names (strip whitespace, title-case) ──────
         df.columns = [c.strip() for c in df.columns]
 
-        # ── Validate required columns ───────────────────────────────────────
         REQUIRED = {"Part Name", "Length", "Width", "Height",
                     "Fragile", "Stacking", "Nesting", "Nesting %"}
         missing = REQUIRED - set(df.columns)
@@ -614,7 +561,6 @@ if cur == 1:
             st.error(f"Missing columns: {', '.join(sorted(missing))}")
             st.stop()
 
-        # ── Coerce numeric dims ─────────────────────────────────────────────
         for c in ["Width", "Length", "Height"]:
             df[c] = pd.to_numeric(df[c], errors="coerce").fillna(0)
 
@@ -634,31 +580,80 @@ if cur == 1:
         st.session_state.data['parts_df'] = df
         st.session_state.mapping_confirmed = True
         st.success(f"✓  {len(df)} parts loaded. Rules will be read from the file.")
+
+        # ── Single-row manual override ────────────────────────────────────────
+        # Only shown when exactly one part is uploaded. Multi-row uploads skip
+        # this block entirely and always use Excel-driven values.
+        if len(df) == 1:
+            st.markdown("---")
+            st.markdown("""
+            <p class="sec-desc" style="margin-bottom:0.5rem">
+              <strong>Single part detected.</strong> Optionally override the handling
+              rules from the file before running the analysis.
+            </p>
+            """, unsafe_allow_html=True)
+
+            override_enabled = st.toggle(
+                "Enable manual override", value=False, key="override_toggle"
+            )
+
+            if override_enabled:
+                col1, col2 = st.columns(2)
+                with col1:
+                    ov_fragile  = st.selectbox("Fragile",  ["No", "Yes"], key="ov_fragile")
+                    ov_stacking = st.selectbox("Stacking", ["Yes", "No"], key="ov_stacking")
+                with col2:
+                    ov_nesting  = st.selectbox("Nesting",  ["No", "Yes"], key="ov_nesting")
+                    ov_nest_pct = st.number_input(
+                        "Nesting %", min_value=0.0, max_value=100.0,
+                        value=0.0, step=1.0, key="ov_nest_pct"
+                    )
+
+                # Store overrides so Step 2 can read them
+                st.session_state.data['overrides'] = {
+                    "Fragile":   ov_fragile,
+                    "Stacking":  ov_stacking,
+                    "Nesting":   ov_nesting,
+                    "Nesting %": ov_nest_pct,
+                }
+            else:
+                # Clear any previously stored overrides when toggle is off
+                st.session_state.data.pop('overrides', None)
+
         st.button("Run analysis →", on_click=next_step)
 
 # ─────────────────────────────────────────────────────────────────────────────
-# STEP 2 — RESULTS  (replaces old step 5)
+# STEP 2 — RESULTS
 # ─────────────────────────────────────────────────────────────────────────────
 elif cur == 2:
     df = st.session_state.data['parts_df']
+    # Overrides only exist for single-row uploads where the user enabled the toggle
+    overrides = st.session_state.data.get('overrides', None)
     results = []
 
     for _, row in df.iterrows():
-        best = best_box_for_part(row)   # ← NEW: per-part auto box selection
+        # Pass overrides only for single-row uploads; None for bulk (no effect)
+        row_overrides = overrides if (len(df) == 1 and overrides) else None
+        best = best_box_for_part(row, overrides=row_overrides)
         if best is None:
             continue
 
-        # ── NEW: re-parse per-part flags for display ────────────────────────
-        fragile   = parse_fragility(row.get("Fragile", "No"))
-        stacking  = parse_yes_no(row.get("Stacking", "Yes"))
-        nested    = parse_yes_no(row.get("Nesting", "No"))
-        nest_pct  = parse_nesting_pct(row.get("Nesting %", 0))
+        # Determine display values: prefer overrides for the single-row case
+        def display_field(field):
+            if row_overrides and field in row_overrides:
+                return row_overrides[field]
+            return row.get(field, None)
+
+        fragile   = parse_fragility(display_field("Fragile"))
+        stacking  = parse_yes_no(display_field("Stacking") if display_field("Stacking") is not None else "Yes")
+        nested    = parse_yes_no(display_field("Nesting"))
+        nest_pct  = parse_nesting_pct(display_field("Nesting %"))
         lifespan  = str(row.get("Lifespan", "—")).strip() if not pd.isna(row.get("Lifespan", float("nan"))) else "—"
         box_lbl   = f"Option {best['box_key']} ({best['box_dims'][0]}×{best['box_dims'][1]}×{best['box_dims'][2]})"
 
         results.append({
             "Part Name":       row["Part Name"],
-            "Tier":            best.get("tier", "—"),   # ← Small/Medium/Large/Very Large
+            "Tier":            best.get("tier", "—"),
             "Best Box":        box_lbl,
             "Parts / Box":     best["count"],
             "Orientation":     best["dims"],
@@ -675,8 +670,11 @@ elif cur == 2:
 
     avg_util  = res_df["Utilization"].mean() if len(res_df) else 0
     best_part = res_df.loc[res_df["Utilization"].idxmax(), "Part Name"] if len(res_df) else "—"
-    # Most common recommended box
     top_box   = res_df["Best Box"].value_counts().idxmax() if len(res_df) else "—"
+
+    # Show a notice if overrides were applied
+    if overrides:
+        st.info("ℹ️  Manual override applied — handling rules from the toggle were used instead of the file.")
 
     st.markdown("""
     <div class="sec-head">
@@ -707,13 +705,11 @@ elif cur == 2:
     </div>
     """, unsafe_allow_html=True)
 
-    # ── Build results table ─────────────────────────────────────────────────
     rows_html = ""
     for _, row in res_df.iterrows():
         u = float(row["Utilization"])
         bar_color = "#2a9d5c" if u >= 60 else "#e63329"
         unused_val = int(row["Unused (mm³)"])
-        # Tier badge colour
         tier_colors = {"Small": "#4a90d9", "Medium": "#e6a817",
                        "Large": "#e63329",  "Very Large": "#7b47c2"}
         tier = row.get("Tier", "—")
@@ -765,7 +761,6 @@ elif cur == 2:
     """
     components.html(table_html, height=max(200, len(res_df) * 70 + 60), scrolling=True)
 
-    # ── Export ──────────────────────────────────────────────────────────────
     output = io.BytesIO()
     export_df = res_df.rename(columns={"Unused (mm³)": "Unused (mm3)"})
     with pd.ExcelWriter(output, engine='xlsxwriter') as writer:
