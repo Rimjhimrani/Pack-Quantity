@@ -369,8 +369,9 @@ div[data-testid="stAlert"] {
 }
 .stRadio > div > label:last-child { border-right: 1px solid #ddd !important; }
 .stRadio > div > label:has(input:checked) {
-    background: #111 !important;
-    color: #f5f2ec !important;
+    background: #e63329 !important;
+    color: #fff !important;
+    border-color: #e63329 !important;
 }
 
 /* ── Download notice ── */
