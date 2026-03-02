@@ -527,7 +527,7 @@ def run_analysis(df, box_mode, custom_box_dim=None, single_part_rules=None):
 st.markdown("""
 <div class="masthead">
   <div>
-    <span class="masthead-logo">AgiloPack 2</span><span class="masthead-accent"></span>
+    <span class="masthead-logo">AgiloPack</span><span class="masthead-accent"></span>
   </div>
   <div class="masthead-tagline">Box Space Utilization</div>
   <div class="masthead-version">v2.0</div>
