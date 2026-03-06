@@ -1,9 +1,8 @@
 import streamlit as st
 import streamlit.components.v1 as components
 import pandas as pd
-import itertools
 import io
-import re
+import math
 
 st.set_page_config(page_title="AgiloPack", layout="wide", page_icon="▪")
 
@@ -19,7 +18,6 @@ html, body, [class*="css"], .stApp {
     color: #111 !important;
 }
 
-/* Subtle dot-grid texture overlay */
 .stApp::before {
     content: '';
     position: fixed;
@@ -32,13 +30,12 @@ html, body, [class*="css"], .stApp {
 }
 
 .block-container {
-    max-width: 1020px !important;
+    max-width: 1100px !important;
     padding: 0 2rem 5rem 2rem !important;
     position: relative;
     z-index: 1;
 }
 
-/* ── Masthead ── */
 .masthead {
     border-bottom: 3px solid #111;
     padding: 4rem 0 1.4rem 0;
@@ -90,7 +87,6 @@ html, body, [class*="css"], .stApp {
     align-self: center;
 }
 
-/* ── Ribbon ── */
 .ribbon {
     display: flex;
     border-bottom: 1px solid #ddd;
@@ -141,7 +137,6 @@ html, body, [class*="css"], .stApp {
     margin-bottom: 2px;
 }
 
-/* ── Section Headers ── */
 .sec-head {
     display: flex;
     align-items: center;
@@ -177,7 +172,6 @@ html, body, [class*="css"], .stApp {
     animation: fadeSlideDown 0.4s 0.2s ease both;
 }
 
-/* ── Box Catalogue Grid ── */
 .bx-grid {
     display: grid;
     grid-template-columns: repeat(4, 1fr);
@@ -209,7 +203,8 @@ html, body, [class*="css"], .stApp {
 }
 .bx-item:hover::before { transform: scaleX(1); }
 .bx-item:hover .bx-name,
-.bx-item:hover .bx-dims { color: #fff; }
+.bx-item:hover .bx-dims,
+.bx-item:hover .bx-type { color: #fff; }
 .bx-item:nth-child(4n) { border-right: none; }
 .bx-name {
     font-family: 'Bebas Neue', sans-serif;
@@ -227,8 +222,15 @@ html, body, [class*="css"], .stApp {
     position: relative; z-index: 1;
     transition: color 0.15s;
 }
+.bx-type {
+    font-family: 'DM Mono', monospace;
+    font-size: 0.6rem;
+    color: #bbb;
+    margin-top: 3px;
+    position: relative; z-index: 1;
+    transition: color 0.15s;
+}
 
-/* ── Stat Grid ── */
 .stat-grid {
     display: grid;
     grid-template-columns: repeat(4, 1fr);
@@ -270,7 +272,6 @@ html, body, [class*="css"], .stApp {
 }
 .stat-value.red { color: #e63329; }
 
-/* ── Buttons ── */
 .stButton > button {
     background: #111 !important;
     color: #f5f2ec !important;
@@ -282,13 +283,11 @@ html, body, [class*="css"], .stApp {
     text-transform: uppercase !important;
     padding: 0.8rem 2.8rem !important;
     transition: background 0.2s, letter-spacing 0.2s !important;
-    position: relative;
 }
 .stButton > button:hover {
     background: #e63329 !important;
     letter-spacing: 3.5px !important;
 }
-.stButton > button:active { transform: translateY(1px); }
 
 [data-testid="stDownloadButton"] > button {
     background: #1a7d48 !important;
@@ -298,7 +297,6 @@ html, body, [class*="css"], .stApp {
     background: #15603a !important;
 }
 
-/* ── Labels / Inputs ── */
 div[data-testid="stSelectbox"] label,
 div[data-testid="stNumberInput"] label,
 div[data-testid="stFileUploader"] label,
@@ -316,26 +314,15 @@ div[data-testid="stNumberInput"] input {
     border: 1px solid #ddd !important;
     border-radius: 0 !important;
     font-family: 'DM Mono', monospace !important;
-    transition: border-color 0.2s !important;
-}
-div[data-testid="stSelectbox"] > div > div:focus-within,
-div[data-testid="stNumberInput"] input:focus {
-    border-color: #e63329 !important;
-    box-shadow: none !important;
-    outline: none !important;
 }
 
 [data-testid="stFileUploader"] {
     border: 2px dashed #ccc !important;
     border-radius: 0 !important;
     background: #fff !important;
-    transition: border-color 0.2s !important;
 }
-[data-testid="stFileUploader"]:hover {
-    border-color: #e63329 !important;
-}
+[data-testid="stFileUploader"]:hover { border-color: #e63329 !important; }
 
-/* ── Info/Alert boxes ── */
 div[data-testid="stAlert"] {
     border-radius: 0 !important;
     border-left: 3px solid #111 !important;
@@ -343,7 +330,6 @@ div[data-testid="stAlert"] {
     font-size: 0.75rem !important;
 }
 
-/* ── Checkbox ── */
 .stCheckbox label {
     font-family: 'DM Mono', monospace !important;
     font-size: 0.7rem !important;
@@ -351,10 +337,7 @@ div[data-testid="stAlert"] {
     text-transform: uppercase !important;
 }
 
-/* ── Radio ── */
-.stRadio > div {
-    gap: 0 !important;
-}
+.stRadio > div { gap: 0 !important; }
 .stRadio > div > label {
     border: 1px solid #ddd !important;
     border-right: none !important;
@@ -365,7 +348,6 @@ div[data-testid="stAlert"] {
     text-transform: uppercase !important;
     background: #fff !important;
     cursor: pointer;
-    transition: background 0.15s !important;
 }
 .stRadio > div > label:last-child { border-right: 1px solid #ddd !important; }
 .stRadio > div > label:has(input:checked) {
@@ -374,7 +356,6 @@ div[data-testid="stAlert"] {
     border-color: #e63329 !important;
 }
 
-/* ── Download notice ── */
 .dl-hint {
     font-family: 'DM Mono', monospace;
     font-size: 0.62rem;
@@ -389,152 +370,217 @@ footer { display: none !important; }
 </style>
 """, unsafe_allow_html=True)
 
-# ── Global Box Data ──────────────────────────────────────────────────────────
-BOXES = {
-    "A": (120,  80,   80),
-    "B": (200,  180,  120),
-    "C": (360,  360,  100),
-    "D": (400,  300,  220),
-    "E": (600,  500,  400),
-    "F": (850,  400,  250),
-    "G": (1200, 1000, 250),
-    "H": (1500, 1200, 1000),
+# ── Box Catalogue (from Excel template) ──────────────────────────────────────
+# No-Stacking sheet boxes (Options A–I)
+BOXES_NO_STACK = {
+    "A": {"dims": (120, 80, 80),    "type": "Bin"},
+    "B": {"dims": (200, 180, 120),  "type": "Bin"},
+    "C": {"dims": (300, 240, 120),  "type": "Bin"},
+    "D": {"dims": (400, 300, 220),  "type": "Bin"},
+    "E": {"dims": (600, 500, 400),  "type": "Bin"},
+    "F": {"dims": (850, 400, 250),  "type": "Customized Box/Trolley/Supplier Box"},
+    "G": {"dims": (1200, 1000, 750),"type": "Customized Box/Trolley/Supplier Box"},
+    "H": {"dims": (1500, 1200, 1000),"type": "Customized Box/Trolley/Supplier Box"},
+    "I": {"dims": (1500, 1200, 1000),"type": "Customized Box/Trolley/Supplier Box"},
 }
 
-TIER_BANDS = [
-    (150,  ["A", "B"]),
-    (380,  ["C", "D"]),
-    (900,  ["E", "F"]),
-    (float("inf"), ["G", "H"]),
-]
+# Yes-Stacking sheet boxes (Options A–H) with tare weight
+BOXES_YES_STACK = {
+    "A": {"dims": (120, 80, 80),    "tare": 0.4,  "type": "Bin"},
+    "B": {"dims": (200, 180, 120),  "tare": 0.5,  "type": "Bin"},
+    "C": {"dims": (300, 240, 120),  "tare": 0.6,  "type": "Bin"},
+    "D": {"dims": (400, 300, 220),  "tare": 0.8,  "type": "Bin"},
+    "E": {"dims": (600, 500, 400),  "tare": 1.0,  "type": "Bin"},
+    "F": {"dims": (800, 600, 600),  "tare": 15.0, "type": "Customized Box/Trolley/Supplier Box"},
+    "G": {"dims": (1200, 1000, 1000),"tare": 40.0,"type": "Customized Box/Trolley/Supplier Box"},
+    "H": {"dims": (1650, 1200, 1000),"tare": 100.0,"type": "Customized Box/Trolley/Supplier Box"},
+}
 
-# ── State ──────────────────────────────────────────────────────────────────────
+# ── Formula Logic (exact Excel replication) ──────────────────────────────────
+
+def rounddown(x):
+    """Excel ROUNDDOWN(x, 0) — truncate toward zero."""
+    return math.floor(x) if x >= 0 else math.ceil(x)
+
+def calc_no_stacking(box_L, box_W, box_H, part_L, part_W, part_H, unit_weight):
+    """
+    No-stacking sheet formula (3 orientation options):
+      Option 1 (L-L): cols=box_L/part_L, rows=box_W/part_W, layers=box_H/part_H
+      Option 2 (L-W): cols=box_L/part_W, rows=box_W/part_L, layers=box_H/part_H
+      Option 3 (L-H): cols=box_L/part_H, rows=box_W/part_H, layers=box_H/part_H
+      Total Qty = ROUNDDOWN(cols)*ROUNDDOWN(rows)*ROUNDDOWN(layers)
+      Box Weight = Total Qty * Unit Weight
+    """
+    options = []
+
+    # Option 1: Length-Length
+    o1_L = rounddown(box_L / part_L)
+    o1_W = rounddown(box_W / part_W)
+    o1_H = rounddown(box_H / part_H)
+    o1_qty = o1_L * o1_W * o1_H
+    options.append({
+        "option": "Option 1 (L–L)",
+        "qty": o1_qty,
+        "box_weight": round(o1_qty * unit_weight, 3),
+        "per_axis": f"{o1_L} × {o1_W} × {o1_H}",
+    })
+
+    # Option 2: Length-Width
+    o2_L = rounddown(box_L / part_W)
+    o2_W = rounddown(box_W / part_L)
+    o2_H = rounddown(box_H / part_H)
+    o2_qty = o2_L * o2_W * o2_H
+    options.append({
+        "option": "Option 2 (L–W)",
+        "qty": o2_qty,
+        "box_weight": round(o2_qty * unit_weight, 3),
+        "per_axis": f"{o2_L} × {o2_W} × {o2_H}",
+    })
+
+    # Option 3: Length-Height
+    o3_L = rounddown(box_L / part_H)
+    o3_W = rounddown(box_W / part_H)
+    o3_H = rounddown(box_H / part_H)
+    o3_qty = o3_L * o3_W * o3_H
+    options.append({
+        "option": "Option 3 (L–H)",
+        "qty": o3_qty,
+        "box_weight": round(o3_qty * unit_weight, 3),
+        "per_axis": f"{o3_L} × {o3_W} × {o3_H}",
+    })
+
+    best = max(options, key=lambda x: x["qty"])
+    return options, best
+
+def calc_yes_stacking(box_L, box_W, box_H, part_L, part_W, part_H, unit_weight, tare_weight):
+    """
+    Yes-stacking sheet formula (3 orientation options):
+      Option 1: cols=box_L/part_L, rows=box_W/part_W, height_ratio=box_H/part_H
+        Qty = ROUNDDOWN(cols) * ROUNDDOWN(rows) * IF(ROUNDDOWN(height_ratio)>=1, 1, 0)
+      Option 2: cols=box_L/part_W, rows=box_W/part_L, height_ratio=box_H/part_H
+        Qty = ROUNDDOWN(cols) * ROUNDDOWN(rows) * IF(ROUNDDOWN(height_ratio)>1, 1, 0)  [note: >1 not >=1]
+      Option 3: cols=box_L/part_H, rows=box_W/part_H, height_ratio=box_H/part_H
+        Qty = ROUNDDOWN(cols) * ROUNDDOWN(rows) * IF(ROUNDDOWN(height_ratio)>=1, 1, 0)
+      Box Weight = Qty * Unit Weight + Tare Weight
+    """
+    options = []
+
+    # Option 1: Length-Length  — IF(ROUNDDOWN(P)>=1,1,0)
+    o1_L  = rounddown(box_L / part_L)
+    o1_W  = rounddown(box_W / part_W)
+    o1_H  = rounddown(box_H / part_H)
+    o1_qty = o1_L * o1_W * (1 if o1_H >= 1 else 0)
+    options.append({
+        "option": "Option 1 (L–L)",
+        "qty": o1_qty,
+        "box_weight": round(o1_qty * unit_weight + tare_weight, 3),
+        "per_axis": f"{o1_L} × {o1_W} × H-ratio:{o1_H}",
+    })
+
+    # Option 2: Length-Width — IF(ROUNDDOWN(P)>1,1,0)
+    o2_L  = rounddown(box_L / part_W)
+    o2_W  = rounddown(box_W / part_L)
+    o2_H  = rounddown(box_H / part_H)
+    o2_qty = o2_L * o2_W * (1 if o2_H > 1 else 0)
+    options.append({
+        "option": "Option 2 (L–W)",
+        "qty": o2_qty,
+        "box_weight": round(o2_qty * unit_weight + tare_weight, 3),
+        "per_axis": f"{o2_L} × {o2_W} × H-ratio:{o2_H}",
+    })
+
+    # Option 3: Length-Height — IF(ROUNDDOWN(P)>=1,1,0)
+    o3_L  = rounddown(box_L / part_H)
+    o3_W  = rounddown(box_W / part_H)
+    o3_H  = rounddown(box_H / part_H)
+    o3_qty = o3_L * o3_W * (1 if o3_H >= 1 else 0)
+    options.append({
+        "option": "Option 3 (L–H)",
+        "qty": o3_qty,
+        "box_weight": round(o3_qty * unit_weight + tare_weight, 3),
+        "per_axis": f"{o3_L} × {o3_W} × H-ratio:{o3_H}",
+    })
+
+    best = max(options, key=lambda x: x["qty"])
+    return options, best
+
+def run_analysis(df, stacking_mode, box_mode, custom_box=None, custom_tare=0.0):
+    results = []
+    box_catalogue = BOXES_YES_STACK if stacking_mode == "Yes Stacking" else BOXES_NO_STACK
+
+    for _, row in df.iterrows():
+        part_L = float(row["Length"])
+        part_W = float(row["Width"])
+        part_H = float(row["Height"])
+        unit_w = float(row.get("Unit Weight", 0) or 0)
+        part_name = str(row.get("Part Name", f"Part {_+1}"))
+
+        if box_mode == "Manual":
+            box_L, box_W, box_H = custom_box
+            tare = custom_tare
+            if stacking_mode == "Yes Stacking":
+                opts, best = calc_yes_stacking(box_L, box_W, box_H, part_L, part_W, part_H, unit_w, tare)
+            else:
+                opts, best = calc_no_stacking(box_L, box_W, box_H, part_L, part_W, part_H, unit_w)
+            results.append({
+                "Part Name": part_name,
+                "Part L×W×H (mm)": f"{part_L:.0f}×{part_W:.0f}×{part_H:.0f}",
+                "Unit Weight (kg)": unit_w,
+                "Box": "Custom",
+                "Box Type": "Manual Entry",
+                "Box L×W×H (mm)": f"{box_L}×{box_W}×{box_H}",
+                "Best Option": best["option"],
+                "Best Qty / Box": best["qty"],
+                "Box Weight (kg)": best["box_weight"],
+                "Per Axis (L×W×H layers)": best["per_axis"],
+                "Opt1 Qty": opts[0]["qty"], "Opt1 Wt": opts[0]["box_weight"],
+                "Opt2 Qty": opts[1]["qty"], "Opt2 Wt": opts[1]["box_weight"],
+                "Opt3 Qty": opts[2]["qty"], "Opt3 Wt": opts[2]["box_weight"],
+            })
+        else:
+            for bkey, bdata in box_catalogue.items():
+                box_L, box_W, box_H = bdata["dims"]
+                tare = bdata.get("tare", 0.0)
+                if stacking_mode == "Yes Stacking":
+                    opts, best = calc_yes_stacking(box_L, box_W, box_H, part_L, part_W, part_H, unit_w, tare)
+                else:
+                    opts, best = calc_no_stacking(box_L, box_W, box_H, part_L, part_W, part_H, unit_w)
+                results.append({
+                    "Part Name": part_name,
+                    "Part L×W×H (mm)": f"{part_L:.0f}×{part_W:.0f}×{part_H:.0f}",
+                    "Unit Weight (kg)": unit_w,
+                    "Box": f"Option {bkey}",
+                    "Box Type": bdata["type"],
+                    "Box L×W×H (mm)": f"{box_L}×{box_W}×{box_H}",
+                    "Best Option": best["option"],
+                    "Best Qty / Box": best["qty"],
+                    "Box Weight (kg)": best["box_weight"],
+                    "Per Axis (L×W×H layers)": best["per_axis"],
+                    "Opt1 Qty": opts[0]["qty"], "Opt1 Wt": opts[0]["box_weight"],
+                    "Opt2 Qty": opts[1]["qty"], "Opt2 Wt": opts[1]["box_weight"],
+                    "Opt3 Qty": opts[2]["qty"], "Opt3 Wt": opts[2]["box_weight"],
+                })
+    return pd.DataFrame(results)
+
+# ── State ─────────────────────────────────────────────────────────────────────
 if 'step' not in st.session_state: st.session_state.step = 1
 if 'data' not in st.session_state: st.session_state.data = {}
 
-def next_step(): st.session_state.step += 1
 def reset_process():
     for k in list(st.session_state.keys()): del st.session_state[k]
     st.rerun()
 
-# ── Helpers ──────────────────────────────────────────────────────────────────
-def calculate_fit(box_dim, part_dim, nested, nest_pct, stacking, fragile):
-    bl, bw, bh = box_dim
-    p = list(part_dim)
-    labels = {0: "Breadthwise", 1: "Lengthwise", 2: "Heightwise"}
-    best_count, best_info = 0, None
-    for idx in itertools.permutations([0, 1, 2]):
-        ow, ol, oh = p[idx[0]], p[idx[1]], p[idx[2]]
-        if fragile == "Fragile" and idx[2] != 2: continue
-        cols, rows = bw // ow, bl // ol
-        per_layer = cols * rows
-        if per_layer <= 0: continue
-        if not stacking:
-            total = per_layer
-        elif nested:
-            inc = oh * (nest_pct / 100)
-            layers = 1 + int((bh - oh) // inc) if (bh >= oh and inc > 0) else 1
-            total = per_layer * max(1, layers)
-        else:
-            total = per_layer * (bh // oh)
-        if total > best_count:
-            best_count = int(total)
-            best_info = {"count": best_count, "dims": f"{ow}×{ol}×{oh}",
-                         "orientation": labels[idx[2]],
-                         "used_vol": round(best_count * p[0]*p[1]*p[2], 2)}
-    if not best_info: return None
-    bvol = bw * bl * bh
-    best_info["util"] = round((best_info["used_vol"] / bvol) * 100, 2)
-    best_info["unused"] = round(bvol - best_info["used_vol"], 2)
-    return best_info
-
-def parse_yes_no(val):
-    if pd.isna(val): return False
-    return str(val).strip().lower() in ("yes", "y", "true", "1")
-
-def parse_nesting_pct(val):
-    if pd.isna(val): return 0.0
-    s = str(val).strip()
-    try:
-        f = float(s)
-        return f * 100 if f <= 1.0 else f
-    except ValueError:
-        m = re.search(r"(\d+\.?\d*)", s)
-        return float(m.group(1)) if m else 0.0
-
-def lifespan_to_density_factor(val):
-    if pd.isna(val): return 1.0
-    s = str(val).strip().lower()
-    if s in ("long", "high", "durable"): return 0.85
-    if s in ("medium", "mid"): return 0.92
-    return 1.0
-
-def run_analysis(df, box_mode, custom_box_dim=None, single_part_rules=None):
-    results = []
-    for _, row in df.iterrows():
-        if single_part_rules:
-            fragile   = "Fragile" if single_part_rules['fragile'] else "Non-Fragile"
-            stacking  = single_part_rules['stacking']
-            nested    = single_part_rules['nesting']
-            nest_pct  = single_part_rules['nest_pct']
-        else:
-            fragile   = "Fragile" if parse_yes_no(row.get("Fragile", "No")) else "Non-Fragile"
-            stacking  = parse_yes_no(row.get("Stacking", "Yes"))
-            nested    = parse_yes_no(row.get("Nesting", "No"))
-            nest_pct  = parse_nesting_pct(row.get("Nesting %", 0))
-
-        part_dim  = (row["Width"], row["Length"], row["Height"])
-        density_f = lifespan_to_density_factor(row.get("Lifespan", "Short"))
-        best_score, best_box_key, best_res = -1, None, None
-
-        if box_mode == "Manual":
-            best_res = calculate_fit(custom_box_dim, part_dim, nested, nest_pct, stacking, fragile)
-            best_box_key = "Custom"
-        else:
-            max_p = max(part_dim)
-            tier_order = []
-            matched = False
-            for upper, keys in TIER_BANDS:
-                if not matched and max_p <= upper: matched = True
-                if matched: tier_order.append(keys)
-            for candidate_keys in tier_order:
-                for b_key in candidate_keys:
-                    res = calculate_fit(BOXES[b_key], part_dim, nested, nest_pct, stacking, fragile)
-                    if res:
-                        score = res["count"] * density_f + res["util"] / 1000
-                        if score > best_score:
-                            best_score, best_box_key, best_res = score, b_key, res
-                if best_res: break
-
-        if best_res:
-            box_display = f"Option {best_box_key}" if best_box_key != "Custom" else f"Manual ({custom_box_dim[0]}×{custom_box_dim[1]}×{custom_box_dim[2]})"
-            results.append({
-                "Part Name": row["Part Name"],
-                "Best Box": box_display,
-                "Parts / Box": best_res["count"],
-                "Orientation": best_res["dims"],
-                "Placement": best_res["orientation"],
-                "Utilization": best_res["util"],
-                "Unused (mm³)": int(best_res["unused"]),
-                "Fragile": fragile,
-                "Stacking": "Yes" if stacking else "No",
-                "Nesting": f"Yes ({nest_pct:.0f}%)" if nested else "No",
-                "Lifespan": str(row.get("Lifespan", "—"))
-            })
-    return pd.DataFrame(results)
-
-# ── Masthead ────────────────────────────────────────────────────────────────
+# ── Masthead ──────────────────────────────────────────────────────────────────
 st.markdown("""
 <div class="masthead">
   <div>
     <span class="masthead-logo">AgiloPack</span><span class="masthead-accent"></span>
   </div>
   <div class="masthead-tagline">Box Space Utilization</div>
-  <div class="masthead-version">v2.0</div>
+  <div class="masthead-version">v3.0 · Excel Formula Engine</div>
 </div>
 """, unsafe_allow_html=True)
 
-# ── Ribbon ───────────────────────────────────────────────────────────────────
 STEPS = ["Upload & Config", "Results"]
 ribbon_html = '<div class="ribbon">'
 for i, s in enumerate(STEPS, 1):
@@ -553,70 +599,65 @@ if st.session_state.step == 1:
       <span class="sec-title">Upload & Configuration</span>
     </div>
     <hr class="sec-rule">
-    <p class="sec-desc">Upload a CSV or Excel file containing part dimensions. Single-part files unlock manual handling rules; bulk files read rules from columns.</p>
+    <p class="sec-desc">Upload a CSV or Excel file with part dimensions. Required columns: <strong>Part Name, Length, Width, Height, Unit Weight</strong>. Formula logic mirrors the official Packaging Qty Calculation Template.</p>
     """, unsafe_allow_html=True)
 
-    uploaded_file = st.file_uploader("Drop part file here", type=["csv", "xlsx"])
+    uploaded_file = st.file_uploader("Drop part file here (CSV or Excel)", type=["csv", "xlsx"])
 
     if uploaded_file:
         df = pd.read_csv(uploaded_file) if uploaded_file.name.endswith('.csv') else pd.read_excel(uploaded_file)
         df.columns = [c.strip() for c in df.columns]
-
-        is_single = len(df) == 1
-        mode_label = "Single Part" if is_single else "Bulk Analysis"
-        st.info(f"⬡  Mode detected: **{mode_label}** — {len(df)} row{'s' if len(df) != 1 else ''} loaded")
+        st.info(f"⬡  {len(df)} row{'s' if len(df) != 1 else ''} loaded — columns: {', '.join(df.columns.tolist())}")
 
         st.markdown("<br>", unsafe_allow_html=True)
 
-        box_mode = st.radio("Box selection mode", ["Predefined Catalogue", "Manual Box Size Entry"], horizontal=True)
+        col_mode, col_stack = st.columns(2)
+        with col_mode:
+            box_mode = st.radio("Box selection mode", ["Predefined Catalogue", "Manual Box Size Entry"], horizontal=False)
+        with col_stack:
+            stacking_mode = st.radio("Stacking mode", ["No Stacking", "Yes Stacking"], horizontal=False)
+
+        st.markdown("""
+        <div style="font-family:'DM Mono',monospace;font-size:0.62rem;letter-spacing:1.5px;
+                    text-transform:uppercase;color:#aaa;margin:0.4rem 0 1.2rem 0;">
+            ↳ No Stacking: Qty = ROUNDDOWN(L/pL) × ROUNDDOWN(W/pW) × ROUNDDOWN(H/pH) &nbsp;|&nbsp;
+            Yes Stacking: Part fits if H/pH ≥ 1 (1 layer), weight includes tare
+        </div>
+        """, unsafe_allow_html=True)
 
         custom_box = None
+        custom_tare = 0.0
         if box_mode == "Manual Box Size Entry":
             st.markdown("<br>", unsafe_allow_html=True)
-            c1, c2, c3 = st.columns(3)
+            c1, c2, c3, c4 = st.columns(4)
             bl = c1.number_input("Box Length (mm)", value=400, step=10)
             bw = c2.number_input("Box Width (mm)", value=300, step=10)
             bh = c3.number_input("Box Height (mm)", value=200, step=10)
             custom_box = (bl, bw, bh)
+            if stacking_mode == "Yes Stacking":
+                custom_tare = c4.number_input("Box Tare Weight (kg)", value=0.0, step=0.1)
         else:
             st.markdown("<br>", unsafe_allow_html=True)
+            bx_cat = BOXES_YES_STACK if stacking_mode == "Yes Stacking" else BOXES_NO_STACK
             grid_html = '<div class="bx-grid">'
-            for k, v in BOXES.items():
-                grid_html += f'<div class="bx-item"><div class="bx-name">Option {k}</div><div class="bx-dims">{v[0]}×{v[1]}×{v[2]} mm</div></div>'
+            for k, v in bx_cat.items():
+                dims = v["dims"]
+                tare_txt = f" · {v.get('tare',0)} kg tare" if stacking_mode == "Yes Stacking" else ""
+                grid_html += f'''<div class="bx-item">
+                    <div class="bx-name">Option {k}</div>
+                    <div class="bx-dims">{dims[0]}×{dims[1]}×{dims[2]} mm</div>
+                    <div class="bx-type">{v["type"]}{tare_txt}</div>
+                </div>'''
             grid_html += '</div>'
             st.markdown(grid_html, unsafe_allow_html=True)
-
-        sp_rules = None
-        if is_single:
-            st.markdown("---")
-            st.markdown("""
-            <div style="font-family:'DM Mono',monospace; font-size:0.66rem; letter-spacing:2px;
-                        text-transform:uppercase; color:#888; margin-bottom:0.8rem;">
-                Handling Rules
-            </div>
-            """, unsafe_allow_html=True)
-            c1, c2, c3, c4 = st.columns(4)
-            frag  = c1.checkbox("Fragile")
-            stack = c2.checkbox("Stacking allowed", value=True)
-            nest  = c3.checkbox("Nesting allowed")
-            nest_p = c4.number_input("Nesting %", value=0, min_value=0, max_value=100) if nest else 0
-            sp_rules = {'fragile': frag, 'stacking': stack, 'nesting': nest, 'nest_pct': nest_p}
-        else:
-            st.markdown("""
-            <p style='font-family:"DM Mono",monospace; font-size:0.68rem; letter-spacing:1px;
-                      color:#aaa; margin-top:1rem;'>
-                ↳ Handling rules (Fragile, Stacking, Nesting) will be read from file columns.
-            </p>
-            """, unsafe_allow_html=True)
 
         st.markdown("<br>", unsafe_allow_html=True)
         if st.button("Run Analysis →"):
             st.session_state.data['results_df'] = run_analysis(
-                df,
-                "Catalogue" if box_mode == "Predefined Catalogue" else "Manual",
-                custom_box,
-                sp_rules
+                df, stacking_mode, "Catalogue" if box_mode == "Predefined Catalogue" else "Manual",
+                custom_box, custom_tare
             )
+            st.session_state.data['stacking_mode'] = stacking_mode
             st.session_state.step = 2
             st.rerun()
 
@@ -625,77 +666,63 @@ if st.session_state.step == 1:
 # ─────────────────────────────────────────────────────────────────────────────
 elif st.session_state.step == 2:
     res_df = st.session_state.data['results_df']
+    stacking_mode = st.session_state.data.get('stacking_mode', '')
 
-    st.markdown("""
+    st.markdown(f"""
     <div class="sec-head">
       <span class="sec-num">02</span>
-      <span class="sec-title">Results</span>
+      <span class="sec-title">Results — {stacking_mode}</span>
     </div>
     <hr class="sec-rule">
     """, unsafe_allow_html=True)
 
     if res_df.empty:
-        st.error("No valid fits found. Ensure box dimensions are larger than part dimensions.")
+        st.error("No valid fits found. Check that box dimensions are larger than part dimensions.")
         if st.button("← Back"):
             st.session_state.step = 1
             st.rerun()
     else:
-        avg_util = res_df["Utilization"].mean()
-        best_util = res_df["Utilization"].max()
-        total_fit = res_df["Parts / Box"].sum()
+        parts_count = res_df["Part Name"].nunique()
+        best_qty = int(res_df["Best Qty / Box"].max())
+        avg_qty = res_df["Best Qty / Box"].mean()
+        max_wt = res_df["Box Weight (kg)"].max()
 
         st.markdown(f"""
         <div class="stat-grid">
           <div class="stat-cell">
             <div class="stat-label">Parts Analysed</div>
-            <div class="stat-value">{len(res_df)}</div>
+            <div class="stat-value">{parts_count}</div>
           </div>
           <div class="stat-cell">
-            <div class="stat-label">Avg Utilization</div>
-            <div class="stat-value red">{avg_util:.1f}%</div>
+            <div class="stat-label">Best Qty / Box</div>
+            <div class="stat-value red">{best_qty}</div>
           </div>
           <div class="stat-cell">
-            <div class="stat-label">Best Fit</div>
-            <div class="stat-value">{best_util:.1f}%</div>
+            <div class="stat-label">Avg Qty / Box</div>
+            <div class="stat-value">{avg_qty:.1f}</div>
           </div>
           <div class="stat-cell">
-            <div class="stat-label">Total Parts Fit</div>
-            <div class="stat-value">{total_fit}</div>
+            <div class="stat-label">Max Box Weight</div>
+            <div class="stat-value">{max_wt:.1f} kg</div>
           </div>
         </div>
         """, unsafe_allow_html=True)
 
-        # Build table rows
+        # Build table
         rows_html = ""
-        for i, row in res_df.iterrows():
-            u = float(row["Utilization"])
-            bar_color = "#2a9d5c" if u >= 60 else ("#f4a300" if u >= 35 else "#e63329")
-            frag_badge = (
-                '<span style="background:#e63329;color:#fff;padding:2px 7px;font-size:0.58rem;letter-spacing:1px;">FRAGILE</span>'
-                if row['Fragile'] == 'Fragile' else
-                '<span style="background:#eee;color:#888;padding:2px 7px;font-size:0.58rem;letter-spacing:1px;">SAFE</span>'
-            )
-            stack_badge = (
-                '<span style="background:#d4edda;color:#1a6b38;padding:2px 6px;font-size:0.58rem;letter-spacing:1px;">YES</span>'
-                if row['Stacking'] == 'Yes' else
-                '<span style="background:#f8d7da;color:#721c24;padding:2px 6px;font-size:0.58rem;letter-spacing:1px;">NO</span>'
-            )
+        for _, row in res_df.iterrows():
+            qty = int(row["Best Qty / Box"])
+            qty_color = "#2a9d5c" if qty >= 10 else ("#f4a300" if qty >= 4 else ("#e63329" if qty == 0 else "#111"))
             rows_html += f"""
             <tr>
                 <td style="font-weight:500;">{row['Part Name']}</td>
-                <td>{row['Best Box']}</td>
-                <td style="font-family:'Bebas Neue',sans-serif;font-size:1.3rem;letter-spacing:1px;">{row['Parts / Box']}</td>
-                <td style="color:#666;">{row['Orientation']}</td>
-                <td>
-                    <span style="font-weight:500;color:{bar_color};">{u:.1f}%</span>
-                    <div style="background:#f0ece5;height:3px;width:100%;margin-top:5px;border-radius:0;">
-                        <div style="height:100%;width:{min(u,100):.1f}%;background:{bar_color};transition:width 0.6s ease;"></div>
-                    </div>
-                </td>
-                <td>{frag_badge}</td>
-                <td>{stack_badge}</td>
-                <td style="color:#888;font-size:0.7rem;">{row['Nesting']}</td>
-                <td style="color:#aaa;font-size:0.7rem;text-transform:uppercase;letter-spacing:1px;">{row['Lifespan']}</td>
+                <td style="color:#666;font-size:0.68rem;">{row['Part L×W×H (mm)']}</td>
+                <td>{row['Box']}</td>
+                <td style="font-size:0.65rem;color:#888;">{row['Box L×W×H (mm)']}</td>
+                <td style="font-family:'Bebas Neue',sans-serif;font-size:1.4rem;color:{qty_color};">{qty}</td>
+                <td style="color:#555;font-size:0.72rem;">{row['Best Option']}</td>
+                <td style="color:#333;">{row['Box Weight (kg)']} kg</td>
+                <td style="color:#aaa;font-size:0.66rem;">{row['Opt1 Qty']} / {row['Opt2 Qty']} / {row['Opt3 Qty']}</td>
             </tr>"""
 
         table_html = f"""
@@ -703,46 +730,44 @@ elif st.session_state.step == 2:
           @import url('https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=Bebas+Neue&family=DM+Sans:wght@400;500&display=swap');
           * {{ box-sizing: border-box; }}
           body {{ margin: 0; background: transparent; }}
-          table {{
-            width: 100%; border-collapse: collapse;
-            font-family: 'DM Mono', monospace;
-            background: #fff;
-            border: 1px solid #ddd;
-          }}
-          thead tr {{
-            background: #111;
-          }}
-          th {{
-            font-size: 0.58rem; letter-spacing: 1.5px; text-transform: uppercase;
-            color: #aaa; padding: 0.9rem 1rem; text-align: left;
-            font-weight: 400; white-space: nowrap;
-          }}
-          td {{
-            padding: 0.85rem 1rem; border-bottom: 1px solid #f0ece5;
-            font-size: 0.74rem; color: #222; vertical-align: middle;
-          }}
-          tbody tr {{ transition: background 0.12s; }}
-          tbody tr:hover {{ background: #faf8f4; }}
-          tbody tr:last-child td {{ border-bottom: none; }}
+          table {{ width:100%;border-collapse:collapse;font-family:'DM Mono',monospace;background:#fff;border:1px solid #ddd; }}
+          thead tr {{ background:#111; }}
+          th {{ font-size:0.58rem;letter-spacing:1.5px;text-transform:uppercase;color:#aaa;padding:0.9rem 1rem;text-align:left;font-weight:400;white-space:nowrap; }}
+          td {{ padding:0.85rem 1rem;border-bottom:1px solid #f0ece5;font-size:0.74rem;color:#222;vertical-align:middle; }}
+          tbody tr:hover {{ background:#faf8f4; }}
+          tbody tr:last-child td {{ border-bottom:none; }}
         </style>
         <table>
           <thead>
             <tr>
-              <th>Part Name</th><th>Box Used</th><th>Count</th>
-              <th>Dims (W×L×H)</th><th>Utilization</th>
-              <th>Fragile</th><th>Stack</th><th>Nest</th><th>Lifespan</th>
+              <th>Part Name</th><th>Part Dims</th><th>Box</th><th>Box Dims</th>
+              <th>Best Qty</th><th>Best Option</th><th>Box Weight</th><th>Opt1/Opt2/Opt3 Qty</th>
             </tr>
           </thead>
           <tbody>{rows_html}</tbody>
         </table>"""
 
-        components.html(table_html, height=420, scrolling=True)
+        components.html(table_html, height=max(420, len(res_df) * 46 + 80), scrolling=True)
 
         st.markdown("<br>", unsafe_allow_html=True)
 
+        # Export with all 3 options per row
         output = io.BytesIO()
+        export_cols = [
+            "Part Name", "Part L×W×H (mm)", "Unit Weight (kg)",
+            "Box", "Box Type", "Box L×W×H (mm)",
+            "Best Option", "Best Qty / Box", "Box Weight (kg)", "Per Axis (L×W×H layers)",
+            "Opt1 Qty", "Opt1 Wt", "Opt2 Qty", "Opt2 Wt", "Opt3 Qty", "Opt3 Wt"
+        ]
         with pd.ExcelWriter(output, engine='xlsxwriter') as writer:
-            res_df.to_excel(writer, index=False, sheet_name='AgiloPack')
+            res_df[export_cols].to_excel(writer, index=False, sheet_name='AgiloPack')
+            wb = writer.book
+            ws = writer.sheets['AgiloPack']
+            hdr_fmt = wb.add_format({'bold': True, 'bg_color': '#111111', 'font_color': '#cccccc',
+                                      'font_name': 'Arial', 'font_size': 9, 'border': 1})
+            for ci, col in enumerate(export_cols):
+                ws.write(0, ci, col, hdr_fmt)
+                ws.set_column(ci, ci, max(len(col) + 2, 14))
 
         col1, col2 = st.columns([1, 5])
         with col1:
@@ -756,4 +781,4 @@ elif st.session_state.step == 2:
             if st.button("↺ Start Over"):
                 reset_process()
 
-        st.markdown('<p class="dl-hint">Excel · All results · Formatted</p>', unsafe_allow_html=True)
+        st.markdown('<p class="dl-hint">Excel · All 3 orientation options per box · Formula-driven</p>', unsafe_allow_html=True)
