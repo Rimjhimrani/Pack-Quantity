@@ -187,7 +187,7 @@ html, body, [class*="css"], .stApp {
     border-right: 1px solid #eee;
     border-bottom: 1px solid #eee;
     background: #fff;
-    transition: background 0.15s, transform 0.15s;
+    transition: background 0.15s;
     position: relative;
     overflow: hidden;
 }
@@ -204,7 +204,8 @@ html, body, [class*="css"], .stApp {
 .bx-item:hover::before { transform: scaleX(1); }
 .bx-item:hover .bx-name,
 .bx-item:hover .bx-dims,
-.bx-item:hover .bx-type { color: #fff; }
+.bx-item:hover .bx-type,
+.bx-item:hover .bx-tare { color: #fff; }
 .bx-item:nth-child(4n) { border-right: none; }
 .bx-name {
     font-family: 'Bebas Neue', sans-serif;
@@ -227,6 +228,14 @@ html, body, [class*="css"], .stApp {
     font-size: 0.6rem;
     color: #bbb;
     margin-top: 3px;
+    position: relative; z-index: 1;
+    transition: color 0.15s;
+}
+.bx-tare {
+    font-family: 'DM Mono', monospace;
+    font-size: 0.58rem;
+    color: #ccc;
+    margin-top: 2px;
     position: relative; z-index: 1;
     transition: color 0.15s;
 }
@@ -330,13 +339,6 @@ div[data-testid="stAlert"] {
     font-size: 0.75rem !important;
 }
 
-.stCheckbox label {
-    font-family: 'DM Mono', monospace !important;
-    font-size: 0.7rem !important;
-    letter-spacing: 1px !important;
-    text-transform: uppercase !important;
-}
-
 .stRadio > div { gap: 0 !important; }
 .stRadio > div > label {
     border: 1px solid #ddd !important;
@@ -356,15 +358,6 @@ div[data-testid="stAlert"] {
     border-color: #e63329 !important;
 }
 
-.dl-hint {
-    font-family: 'DM Mono', monospace;
-    font-size: 0.62rem;
-    letter-spacing: 1.5px;
-    color: #aaa;
-    text-transform: uppercase;
-    margin-top: 0.4rem;
-}
-
 .weight-badge {
     display: inline-block;
     font-family: 'DM Mono', monospace;
@@ -375,15 +368,16 @@ div[data-testid="stAlert"] {
     margin-bottom: 1.5rem;
     border: 1px solid;
 }
-.weight-badge.detected {
-    color: #1a7d48;
-    border-color: #1a7d48;
-    background: #f0faf5;
-}
-.weight-badge.not-detected {
-    color: #999;
-    border-color: #ccc;
-    background: #fafafa;
+.weight-badge.detected    { color: #1a7d48; border-color: #1a7d48; background: #f0faf5; }
+.weight-badge.not-detected { color: #999;   border-color: #ccc;    background: #fafafa; }
+
+.dl-hint {
+    font-family: 'DM Mono', monospace;
+    font-size: 0.62rem;
+    letter-spacing: 1.5px;
+    color: #aaa;
+    text-transform: uppercase;
+    margin-top: 0.4rem;
 }
 
 footer { display: none !important; }
@@ -391,66 +385,69 @@ footer { display: none !important; }
 </style>
 """, unsafe_allow_html=True)
 
-# ── Box Catalogue ─────────────────────────────────────────────────────────────
+# ── Box Catalogue (dimensions + tare weights from Excel template) ─────────────
 BOXES = {
-    "A": {"dims": (120, 80, 80),     "type": "Bin"},
-    "B": {"dims": (200, 180, 120),   "type": "Bin"},
-    "C": {"dims": (300, 240, 120),   "type": "Bin"},
-    "D": {"dims": (400, 300, 220),   "type": "Bin"},
-    "E": {"dims": (600, 500, 400),   "type": "Bin"},
-    "F": {"dims": (850, 400, 250),   "type": "Customized Box/Trolley/Supplier Box"},
-    "G": {"dims": (1200, 1000, 750), "type": "Customized Box/Trolley/Supplier Box"},
-    "H": {"dims": (1500, 1200, 1000),"type": "Customized Box/Trolley/Supplier Box"},
-    "I": {"dims": (1500, 1200, 1000),"type": "Customized Box/Trolley/Supplier Box"},
+    "A": {"dims": (120,  80,   80),  "tare": 0.4,   "type": "Bin"},
+    "B": {"dims": (200,  180,  120), "tare": 0.5,   "type": "Bin"},
+    "C": {"dims": (300,  240,  120), "tare": 0.6,   "type": "Bin"},
+    "D": {"dims": (400,  300,  220), "tare": 0.8,   "type": "Bin"},
+    "E": {"dims": (600,  500,  400), "tare": 1.0,   "type": "Bin"},
+    "F": {"dims": (800,  600,  600), "tare": 15.0,  "type": "Customized Box/Trolley/Supplier Box"},
+    "G": {"dims": (1200, 1000, 1000),"tare": 40.0,  "type": "Customized Box/Trolley/Supplier Box"},
+    "H": {"dims": (1650, 1200, 1000),"tare": 100.0, "type": "Customized Box/Trolley/Supplier Box"},
 }
 
-# ── Formula Logic ─────────────────────────────────────────────────────────────
+# ── Formula Logic (exact Excel replication) ───────────────────────────────────
 
 def rounddown(x):
     return math.floor(x) if x >= 0 else math.ceil(x)
 
-def calc_qty(box_L, box_W, box_H, part_L, part_W, part_H):
+
+def calc_qty(box_L, box_W, box_H, part_L, part_W, part_H, unit_weight, tare, has_weight):
     """
-    3 orientation options:
-      Option 1 (L-L): cols=box_L/part_L, rows=box_W/part_W, layers=box_H/part_H
-      Option 2 (L-W): cols=box_L/part_W, rows=box_W/part_L, layers=box_H/part_H
-      Option 3 (L-H): cols=box_L/part_H, rows=box_W/part_H, layers=box_H/part_H
-      Total Qty = ROUNDDOWN(cols) * ROUNDDOWN(rows) * ROUNDDOWN(layers)
+    Exact Excel formula — 2 orientation options:
+
+    Option 1 (Length–Length):
+      cols  = ROUNDDOWN(box_L / part_L)
+      rows  = ROUNDDOWN(box_W / part_W)
+      layer = IF(ROUNDDOWN(box_H / part_H) >= 1, 1, 0)   ← inclusive >=
+      Qty   = cols × rows × layer
+
+    Option 2 (Length–Width):
+      cols  = ROUNDDOWN(box_L / part_W)
+      rows  = ROUNDDOWN(box_W / part_L)
+      layer = IF(ROUNDDOWN(box_H / part_H) > 1, 1, 0)    ← strict > (must exceed 1)
+      Qty   = cols × rows × layer
+
+    Box Weight = Qty × Unit Weight + Tare  (only when unit weight present)
     """
-    options = []
+    h_ratio = rounddown(box_H / part_H)
 
-    o1_L = rounddown(box_L / part_L)
-    o1_W = rounddown(box_W / part_W)
-    o1_H = rounddown(box_H / part_H)
-    options.append({"option": "Option 1 (L–L)", "qty": o1_L * o1_W * o1_H,
-                    "per_axis": f"{o1_L} × {o1_W} × {o1_H}"})
+    o1_qty = rounddown(box_L / part_L) * rounddown(box_W / part_W) * (1 if h_ratio >= 1 else 0)
+    o1_wt  = round(o1_qty * unit_weight + tare, 3) if (has_weight and unit_weight is not None) else ""
 
-    o2_L = rounddown(box_L / part_W)
-    o2_W = rounddown(box_W / part_L)
-    o2_H = rounddown(box_H / part_H)
-    options.append({"option": "Option 2 (L–W)", "qty": o2_L * o2_W * o2_H,
-                    "per_axis": f"{o2_L} × {o2_W} × {o2_H}"})
+    o2_qty = rounddown(box_L / part_W) * rounddown(box_W / part_L) * (1 if h_ratio > 1 else 0)
+    o2_wt  = round(o2_qty * unit_weight + tare, 3) if (has_weight and unit_weight is not None) else ""
 
-    o3_L = rounddown(box_L / part_H)
-    o3_W = rounddown(box_W / part_H)
-    o3_H = rounddown(box_H / part_H)
-    options.append({"option": "Option 3 (L–H)", "qty": o3_L * o3_W * o3_H,
-                    "per_axis": f"{o3_L} × {o3_W} × {o3_H}"})
-
+    options = [
+        {"option": "Option 1 (L–L)", "qty": o1_qty, "box_weight": o1_wt,
+         "per_axis": f"rd(bL/pL)={rounddown(box_L/part_L)} × rd(bW/pW)={rounddown(box_W/part_W)} × H-ratio:{h_ratio}"},
+        {"option": "Option 2 (L–W)", "qty": o2_qty, "box_weight": o2_wt,
+         "per_axis": f"rd(bL/pW)={rounddown(box_L/part_W)} × rd(bW/pL)={rounddown(box_W/part_L)} × H-ratio:{h_ratio}"},
+    ]
     best = max(options, key=lambda x: x["qty"])
     return options, best
 
-def run_analysis(df, box_mode, custom_box=None, has_weight=False):
+
+def run_analysis(df, box_mode, custom_box=None, custom_tare=0.0, has_weight=False):
     results = []
-    box_catalogue = BOXES
 
     for _, row in df.iterrows():
-        part_L = float(row["Length"])
-        part_W = float(row["Width"])
-        part_H = float(row["Height"])
+        part_L    = float(row["Length"])
+        part_W    = float(row["Width"])
+        part_H    = float(row["Height"])
         part_name = str(row.get("Part Name", f"Part {_+1}"))
 
-        # Weight: use value if column present and not null, else None
         unit_w = None
         if has_weight:
             val = row.get("Unit Weight", None)
@@ -459,48 +456,34 @@ def run_analysis(df, box_mode, custom_box=None, has_weight=False):
             except (ValueError, TypeError):
                 unit_w = None
 
-        if box_mode == "Manual":
-            box_L, box_W, box_H = custom_box
-            opts, best = calc_qty(box_L, box_W, box_H, part_L, part_W, part_H)
-            box_weight = round(best["qty"] * unit_w, 3) if unit_w is not None else ""
+        boxes_to_run = {"Custom": {"dims": custom_box, "tare": custom_tare, "type": "Manual Entry"}} \
+                       if box_mode == "Manual" else BOXES
+
+        for bkey, bdata in boxes_to_run.items():
+            box_L, box_W, box_H = bdata["dims"]
+            tare = bdata["tare"]
+            opts, best = calc_qty(box_L, box_W, box_H, part_L, part_W, part_H, unit_w, tare, has_weight)
+            label = bkey if box_mode == "Manual" else f"Option {bkey}"
             results.append({
-                "Part Name": part_name,
-                "Part L×W×H (mm)": f"{part_L:.0f}×{part_W:.0f}×{part_H:.0f}",
+                "Part Name":        part_name,
+                "Part L×W×H (mm)":  f"{part_L:.0f}×{part_W:.0f}×{part_H:.0f}",
                 "Unit Weight (kg)": unit_w if unit_w is not None else "",
-                "Box": "Custom",
-                "Box Type": "Manual Entry",
-                "Box L×W×H (mm)": f"{box_L}×{box_W}×{box_H}",
-                "Best Option": best["option"],
-                "Best Qty / Box": best["qty"],
-                "Box Weight (kg)": box_weight,
-                "Per Axis (L×W×H layers)": best["per_axis"],
-                "Opt1 Qty": opts[0]["qty"], "Opt1 Wt": round(opts[0]["qty"] * unit_w, 3) if unit_w is not None else "",
-                "Opt2 Qty": opts[1]["qty"], "Opt2 Wt": round(opts[1]["qty"] * unit_w, 3) if unit_w is not None else "",
-                "Opt3 Qty": opts[2]["qty"], "Opt3 Wt": round(opts[2]["qty"] * unit_w, 3) if unit_w is not None else "",
+                "Box":              label,
+                "Box Type":         bdata["type"],
+                "Box L×W×H (mm)":   f"{box_L}×{box_W}×{box_H}",
+                "Best Option":      best["option"],
+                "Best Qty / Box":   best["qty"],
+                "Box Weight (kg)":  best["box_weight"],
+                "Per Axis":         best["per_axis"],
+                "Opt1 Qty":         opts[0]["qty"],
+                "Opt1 Wt":          opts[0]["box_weight"],
+                "Opt2 Qty":         opts[1]["qty"],
+                "Opt2 Wt":          opts[1]["box_weight"],
             })
-        else:
-            for bkey, bdata in box_catalogue.items():
-                box_L, box_W, box_H = bdata["dims"]
-                opts, best = calc_qty(box_L, box_W, box_H, part_L, part_W, part_H)
-                box_weight = round(best["qty"] * unit_w, 3) if unit_w is not None else ""
-                results.append({
-                    "Part Name": part_name,
-                    "Part L×W×H (mm)": f"{part_L:.0f}×{part_W:.0f}×{part_H:.0f}",
-                    "Unit Weight (kg)": unit_w if unit_w is not None else "",
-                    "Box": f"Option {bkey}",
-                    "Box Type": bdata["type"],
-                    "Box L×W×H (mm)": f"{box_L}×{box_W}×{box_H}",
-                    "Best Option": best["option"],
-                    "Best Qty / Box": best["qty"],
-                    "Box Weight (kg)": box_weight,
-                    "Per Axis (L×W×H layers)": best["per_axis"],
-                    "Opt1 Qty": opts[0]["qty"], "Opt1 Wt": round(opts[0]["qty"] * unit_w, 3) if unit_w is not None else "",
-                    "Opt2 Qty": opts[1]["qty"], "Opt2 Wt": round(opts[1]["qty"] * unit_w, 3) if unit_w is not None else "",
-                    "Opt3 Qty": opts[2]["qty"], "Opt3 Wt": round(opts[2]["qty"] * unit_w, 3) if unit_w is not None else "",
-                })
     return pd.DataFrame(results)
 
-# ── State ─────────────────────────────────────────────────────────────────────
+
+# ── Session State ─────────────────────────────────────────────────────────────
 if 'step' not in st.session_state: st.session_state.step = 1
 if 'data' not in st.session_state: st.session_state.data = {}
 
@@ -515,7 +498,7 @@ st.markdown("""
     <span class="masthead-logo">AgiloPack</span><span class="masthead-accent"></span>
   </div>
   <div class="masthead-tagline">Box Space Utilization</div>
-  <div class="masthead-version">v4.0 · Excel Formula Engine</div>
+  <div class="masthead-version">v5.0 · Excel Formula Engine</div>
 </div>
 """, unsafe_allow_html=True)
 
@@ -528,7 +511,7 @@ ribbon_html += '</div>'
 st.markdown(ribbon_html, unsafe_allow_html=True)
 
 # ─────────────────────────────────────────────────────────────────────────────
-# STEP 1
+# STEP 1 — Upload & Config
 # ─────────────────────────────────────────────────────────────────────────────
 if st.session_state.step == 1:
     st.markdown("""
@@ -537,7 +520,7 @@ if st.session_state.step == 1:
       <span class="sec-title">Upload & Configuration</span>
     </div>
     <hr class="sec-rule">
-    <p class="sec-desc">Upload a CSV or Excel file with part dimensions. Required columns: <strong>Part Name, Length, Width, Height</strong>. Optional column: <strong>Unit Weight</strong> — if present, box weight will be calculated automatically.</p>
+    <p class="sec-desc">Upload a CSV or Excel file with part dimensions. Required columns: <strong>Part Name, Length, Width, Height</strong>. Optional: <strong>Unit Weight</strong> — if present, box weight is auto-calculated as <em>Qty × Unit Weight + Box Tare</em>.</p>
     """, unsafe_allow_html=True)
 
     uploaded_file = st.file_uploader("Drop part file here (CSV or Excel)", type=["csv", "xlsx"])
@@ -546,44 +529,47 @@ if st.session_state.step == 1:
         df = pd.read_csv(uploaded_file) if uploaded_file.name.endswith('.csv') else pd.read_excel(uploaded_file)
         df.columns = [c.strip() for c in df.columns]
 
-        # Auto-detect weight column
         has_weight = "Unit Weight" in df.columns
-
         st.info(f"⬡  {len(df)} row{'s' if len(df) != 1 else ''} loaded — columns: {', '.join(df.columns.tolist())}")
 
         if has_weight:
-            st.markdown('<div class="weight-badge detected">⬡ Unit Weight column detected — Box Weight will be calculated</div>', unsafe_allow_html=True)
+            st.markdown('<div class="weight-badge detected">⬡ Unit Weight detected — Box Weight = Qty × Unit Weight + Box Tare</div>', unsafe_allow_html=True)
         else:
             st.markdown('<div class="weight-badge not-detected">○ No Unit Weight column — Box Weight column will be empty</div>', unsafe_allow_html=True)
 
         st.markdown("<br>", unsafe_allow_html=True)
-
         box_mode = st.radio("Box selection mode", ["Predefined Catalogue", "Manual Box Size Entry"], horizontal=False)
 
         st.markdown("""
         <div style="font-family:'DM Mono',monospace;font-size:0.62rem;letter-spacing:1.5px;
                     text-transform:uppercase;color:#aaa;margin:0.4rem 0 1.2rem 0;">
-            ↳ Formula: Qty = ROUNDDOWN(L/pL) × ROUNDDOWN(W/pW) × ROUNDDOWN(H/pH) — best of 3 orientations
+            ↳ Opt 1 (L–L): rd(bL/pL) × rd(bW/pW) × IF(rd(bH/pH) ≥ 1, 1, 0)
+            &nbsp;|&nbsp;
+            Opt 2 (L–W): rd(bL/pW) × rd(bW/pL) × IF(rd(bH/pH) &gt; 1, 1, 0)
         </div>
         """, unsafe_allow_html=True)
 
-        custom_box = None
+        custom_box  = None
+        custom_tare = 0.0
         if box_mode == "Manual Box Size Entry":
             st.markdown("<br>", unsafe_allow_html=True)
-            c1, c2, c3 = st.columns(3)
+            c1, c2, c3, c4 = st.columns(4)
             bl = c1.number_input("Box Length (mm)", value=400, step=10)
-            bw = c2.number_input("Box Width (mm)", value=300, step=10)
+            bw = c2.number_input("Box Width (mm)",  value=300, step=10)
             bh = c3.number_input("Box Height (mm)", value=200, step=10)
             custom_box = (bl, bw, bh)
+            if has_weight:
+                custom_tare = c4.number_input("Box Tare Weight (kg)", value=0.0, step=0.1)
         else:
             st.markdown("<br>", unsafe_allow_html=True)
             grid_html = '<div class="bx-grid">'
             for k, v in BOXES.items():
-                dims = v["dims"]
+                d = v["dims"]
                 grid_html += f'''<div class="bx-item">
                     <div class="bx-name">Option {k}</div>
-                    <div class="bx-dims">{dims[0]}×{dims[1]}×{dims[2]} mm</div>
+                    <div class="bx-dims">{d[0]}×{d[1]}×{d[2]} mm</div>
                     <div class="bx-type">{v["type"]}</div>
+                    <div class="bx-tare">tare: {v["tare"]} kg</div>
                 </div>'''
             grid_html += '</div>'
             st.markdown(grid_html, unsafe_allow_html=True)
@@ -593,18 +579,17 @@ if st.session_state.step == 1:
             st.session_state.data['results_df'] = run_analysis(
                 df,
                 "Catalogue" if box_mode == "Predefined Catalogue" else "Manual",
-                custom_box,
-                has_weight
+                custom_box, custom_tare, has_weight
             )
             st.session_state.data['has_weight'] = has_weight
             st.session_state.step = 2
             st.rerun()
 
 # ─────────────────────────────────────────────────────────────────────────────
-# STEP 2
+# STEP 2 — Results
 # ─────────────────────────────────────────────────────────────────────────────
 elif st.session_state.step == 2:
-    res_df = st.session_state.data['results_df']
+    res_df     = st.session_state.data['results_df']
     has_weight = st.session_state.data.get('has_weight', False)
 
     st.markdown("""
@@ -622,15 +607,13 @@ elif st.session_state.step == 2:
             st.rerun()
     else:
         parts_count = res_df["Part Name"].nunique()
-        best_qty = int(res_df["Best Qty / Box"].max())
-        avg_qty = res_df["Best Qty / Box"].mean()
+        best_qty    = int(res_df["Best Qty / Box"].max())
+        avg_qty     = res_df["Best Qty / Box"].mean()
 
-        # Max weight stat — only if weight was provided
         weight_numeric = pd.to_numeric(res_df["Box Weight (kg)"], errors='coerce')
-        max_wt = weight_numeric.max() if has_weight else None
-
-        stat4_label = "Max Box Weight"
-        stat4_value = f"{max_wt:.1f} kg" if max_wt is not None else "N/A"
+        max_wt   = weight_numeric.max() if has_weight else None
+        stat4_v  = f"{max_wt:.1f} kg" if max_wt is not None else "N/A"
+        stat4_fs = "2.6rem" if max_wt is not None else "1.5rem"
 
         st.markdown(f"""
         <div class="stat-grid">
@@ -647,19 +630,20 @@ elif st.session_state.step == 2:
             <div class="stat-value">{avg_qty:.1f}</div>
           </div>
           <div class="stat-cell">
-            <div class="stat-label">{stat4_label}</div>
-            <div class="stat-value" style="font-size:{'2.6rem' if max_wt is not None else '1.6rem'};">{stat4_value}</div>
+            <div class="stat-label">Max Box Weight</div>
+            <div class="stat-value" style="font-size:{stat4_fs};">{stat4_v}</div>
           </div>
         </div>
         """, unsafe_allow_html=True)
 
-        # Build table
         rows_html = ""
         for _, row in res_df.iterrows():
-            qty = int(row["Best Qty / Box"])
+            qty       = int(row["Best Qty / Box"])
             qty_color = "#2a9d5c" if qty >= 10 else ("#f4a300" if qty >= 4 else ("#e63329" if qty == 0 else "#111"))
-            wt_val = row["Box Weight (kg)"]
-            wt_display = f"{wt_val} kg" if wt_val != "" else "—"
+            wt_val    = row["Box Weight (kg)"]
+            wt_disp   = f"{wt_val} kg" if wt_val != "" else "—"
+            o1_wt_d   = str(row["Opt1 Wt"]) + " kg" if row["Opt1 Wt"] != "" else "—"
+            o2_wt_d   = str(row["Opt2 Wt"]) + " kg" if row["Opt2 Wt"] != "" else "—"
             rows_html += f"""
             <tr>
                 <td style="font-weight:500;">{row['Part Name']}</td>
@@ -668,8 +652,11 @@ elif st.session_state.step == 2:
                 <td style="font-size:0.65rem;color:#888;">{row['Box L×W×H (mm)']}</td>
                 <td style="font-family:'Bebas Neue',sans-serif;font-size:1.4rem;color:{qty_color};">{qty}</td>
                 <td style="color:#555;font-size:0.72rem;">{row['Best Option']}</td>
-                <td style="color:#333;">{wt_display}</td>
-                <td style="color:#aaa;font-size:0.66rem;">{row['Opt1 Qty']} / {row['Opt2 Qty']} / {row['Opt3 Qty']}</td>
+                <td style="color:#333;">{wt_disp}</td>
+                <td style="color:#aaa;font-size:0.64rem;">
+                    Opt1: {row['Opt1 Qty']} qty / {o1_wt_d}<br>
+                    Opt2: {row['Opt2 Qty']} qty / {o2_wt_d}
+                </td>
             </tr>"""
 
         table_html = f"""
@@ -688,23 +675,22 @@ elif st.session_state.step == 2:
           <thead>
             <tr>
               <th>Part Name</th><th>Part Dims</th><th>Box</th><th>Box Dims</th>
-              <th>Best Qty</th><th>Best Option</th><th>Box Weight</th><th>Opt1/Opt2/Opt3 Qty</th>
+              <th>Best Qty</th><th>Best Option</th><th>Box Weight</th><th>Opt1 / Opt2 Detail</th>
             </tr>
           </thead>
           <tbody>{rows_html}</tbody>
         </table>"""
 
-        components.html(table_html, height=max(420, len(res_df) * 46 + 80), scrolling=True)
+        components.html(table_html, height=max(420, len(res_df) * 56 + 80), scrolling=True)
 
         st.markdown("<br>", unsafe_allow_html=True)
 
-        # Export
         output = io.BytesIO()
         export_cols = [
             "Part Name", "Part L×W×H (mm)", "Unit Weight (kg)",
             "Box", "Box Type", "Box L×W×H (mm)",
-            "Best Option", "Best Qty / Box", "Box Weight (kg)", "Per Axis (L×W×H layers)",
-            "Opt1 Qty", "Opt1 Wt", "Opt2 Qty", "Opt2 Wt", "Opt3 Qty", "Opt3 Wt"
+            "Best Option", "Best Qty / Box", "Box Weight (kg)", "Per Axis",
+            "Opt1 Qty", "Opt1 Wt", "Opt2 Qty", "Opt2 Wt",
         ]
         with pd.ExcelWriter(output, engine='xlsxwriter') as writer:
             res_df[export_cols].to_excel(writer, index=False, sheet_name='AgiloPack')
@@ -728,4 +714,4 @@ elif st.session_state.step == 2:
             if st.button("↺ Start Over"):
                 reset_process()
 
-        st.markdown('<p class="dl-hint">Excel · All 3 orientation options per box · Auto weight detection</p>', unsafe_allow_html=True)
+        st.markdown('<p class="dl-hint">Excel · 2 orientations · Box Weight = Qty × Unit Weight + Tare</p>', unsafe_allow_html=True)
