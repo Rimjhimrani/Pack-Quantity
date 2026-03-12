@@ -522,23 +522,14 @@ def run_analysis(df, box_mode, custom_box=None, custom_tare=0.0, has_weight=Fals
             label = bkey if box_mode == "Manual" else f"Option {bkey}"
 
             results.append({
-                "Part ID":           part_no,
+                "Part No":           part_no,
                 "Part Description":  part_desc,
-                "Part L×W×H (mm)":   f"{part_L:.0f}×{part_W:.0f}×{part_H:.0f}",
-                "Unit Weight (kg)":  unit_w if unit_w is not None else "",
+                "Part Dims (mm)":    f"{part_L:.0f}×{part_W:.0f}×{part_H:.0f}",
                 "Box":               label,
-                "Box Type":          bdata["type"],
-                "Box L×W×H (mm)":    f"{box_L}×{box_W}×{box_H}",
-                "Tare (kg)":         tare if has_weight else "",
-                "Best Option":       best_option,
+                "Box Dims (mm)":     f"{box_L}×{box_W}×{box_H}",
                 "Best Qty / Box":    best_qty,
-                "Box Weight (kg)":   best_wt,
-                "Per Axis (Opt1)":   f"rd(bL/pL)={rounddown(box_L/part_L)} × rd(bW/pW)={rounddown(box_W/part_W)} × H-rd={h_ratio}",
-                "Per Axis (Opt2)":   f"rd(bL/pW)={rounddown(box_L/part_W)} × rd(bW/pL)={rounddown(box_W/part_L)} × H-rd={h_ratio}",
-                "Opt1 Qty":          o1_qty,
-                "Opt1 Wt":           o1_wt,
-                "Opt2 Qty":          o2_qty,
-                "Opt2 Wt":           o2_wt,
+                "Best Option":       best_option,
+                "Box Weight (kg)":   best_wt if best_wt != "" else "—",
             })
 
     return pd.DataFrame(results)
@@ -683,7 +674,7 @@ elif st.session_state.step == 2:
             st.session_state.step = 1
             st.rerun()
     else:
-        parts_count = res_df["Part ID"].nunique()
+        parts_count = res_df["Part No"].nunique()
         best_qty    = int(res_df["Best Qty / Box"].max())
         avg_qty     = res_df["Best Qty / Box"].mean()
 
@@ -725,24 +716,22 @@ elif st.session_state.step == 2:
         for _, row in res_df.iterrows():
             qty       = int(row["Best Qty / Box"])
             qty_color = "#2a9d5c" if qty >= 10 else ("#f4a300" if qty >= 4 else ("#e63329" if qty == 0 else "#111"))
-            wt_val    = row["Box Weight (kg)"]
-            wt_disp   = f"{wt_val} kg" if wt_val != "" else "—"
-            o1_wt_d   = str(row["Opt1 Wt"]) + " kg" if row["Opt1 Wt"] != "" else "—"
-            o2_wt_d   = str(row["Opt2 Wt"]) + " kg" if row["Opt2 Wt"] != "" else "—"
+            wt_disp   = str(row["Box Weight (kg)"]) if row["Box Weight (kg)"] != "—" else "—"
+            if wt_disp not in ("—", "") and wt_disp != "—":
+                try:
+                    wt_disp = f"{float(wt_disp)} kg"
+                except ValueError:
+                    pass
             rows_html += f"""
             <tr>
-                <td style="font-weight:600;white-space:nowrap;">{row['Part ID']}</td>
-                <td style="color:#444;font-size:0.72rem;max-width:180px;">{row['Part Description']}</td>
-                <td style="color:#666;font-size:0.68rem;white-space:nowrap;">{row['Part L×W×H (mm)']}</td>
-                <td>{row['Box']}</td>
-                <td style="font-size:0.65rem;color:#888;white-space:nowrap;">{row['Box L×W×H (mm)']}</td>
-                <td style="font-family:'Bebas Neue',sans-serif;font-size:1.4rem;color:{qty_color};">{qty}</td>
+                <td style="font-weight:600;white-space:nowrap;">{row['Part No']}</td>
+                <td style="color:#444;font-size:0.72rem;">{row['Part Description']}</td>
+                <td style="color:#666;font-size:0.68rem;white-space:nowrap;">{row['Part Dims (mm)']}</td>
+                <td style="font-weight:500;">{row['Box']}</td>
+                <td style="font-size:0.65rem;color:#888;white-space:nowrap;">{row['Box Dims (mm)']}</td>
+                <td style="font-family:'Bebas Neue',sans-serif;font-size:1.5rem;color:{qty_color};text-align:center;">{qty}</td>
                 <td style="color:#555;font-size:0.72rem;">{row['Best Option']}</td>
-                <td style="color:#333;">{wt_disp}</td>
-                <td style="color:#aaa;font-size:0.64rem;">
-                    Opt1: {row['Opt1 Qty']} qty / {o1_wt_d}<br>
-                    Opt2: {row['Opt2 Qty']} qty / {o2_wt_d}
-                </td>
+                <td style="color:#333;text-align:right;white-space:nowrap;">{wt_disp}</td>
             </tr>"""
 
         table_html = f"""
@@ -753,6 +742,8 @@ elif st.session_state.step == 2:
           table {{ width:100%;border-collapse:collapse;font-family:'DM Mono',monospace;background:#fff;border:1px solid #ddd; }}
           thead tr {{ background:#111; }}
           th {{ font-size:0.58rem;letter-spacing:1.5px;text-transform:uppercase;color:#aaa;padding:0.9rem 1rem;text-align:left;font-weight:400;white-space:nowrap; }}
+          th:nth-child(6) {{ text-align:center; }}
+          th:nth-child(8) {{ text-align:right; }}
           td {{ padding:0.85rem 1rem;border-bottom:1px solid #f0ece5;font-size:0.74rem;color:#222;vertical-align:middle; }}
           tbody tr:hover {{ background:#faf8f4; }}
           tbody tr:last-child td {{ border-bottom:none; }}
@@ -760,9 +751,14 @@ elif st.session_state.step == 2:
         <table>
           <thead>
             <tr>
-              <th>Part ID</th><th>Part Description</th><th>Part Dims</th>
-              <th>Box</th><th>Box Dims</th>
-              <th>Best Qty</th><th>Best Option</th><th>Box Weight</th><th>Opt1 / Opt2 Detail</th>
+              <th>Part No</th>
+              <th>Part Description</th>
+              <th>Part Dims</th>
+              <th>Box</th>
+              <th>Box Dims</th>
+              <th>Best Qty</th>
+              <th>Best Option</th>
+              <th>Box Weight</th>
             </tr>
           </thead>
           <tbody>{rows_html}</tbody>
@@ -774,11 +770,9 @@ elif st.session_state.step == 2:
 
         output = io.BytesIO()
         export_cols = [
-            "Part ID", "Part Description", "Part L×W×H (mm)", "Unit Weight (kg)",
-            "Box", "Box Type", "Box L×W×H (mm)", "Tare (kg)",
-            "Best Option", "Best Qty / Box", "Box Weight (kg)",
-            "Per Axis (Opt1)", "Per Axis (Opt2)",
-            "Opt1 Qty", "Opt1 Wt", "Opt2 Qty", "Opt2 Wt",
+            "Part No", "Part Description", "Part Dims (mm)",
+            "Box", "Box Dims (mm)",
+            "Best Qty / Box", "Best Option", "Box Weight (kg)",
         ]
         with pd.ExcelWriter(output, engine='xlsxwriter') as writer:
             res_df[export_cols].to_excel(writer, index=False, sheet_name='AgiloPack')
