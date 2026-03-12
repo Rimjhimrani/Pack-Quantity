@@ -397,7 +397,6 @@ footer { display: none !important; }
 """, unsafe_allow_html=True)
 
 # ── Box Catalogue ─────────────────────────────────────────────────────────────
-# WITH WEIGHT catalogue (from With_Weight.xlsx)
 BOXES_WITH_WEIGHT = {
     "A": {"dims": (120,  80,   80),  "tare": 0.4,   "type": "Bin"},
     "B": {"dims": (200,  180,  120), "tare": 0.5,   "type": "Bin"},
@@ -409,7 +408,6 @@ BOXES_WITH_WEIGHT = {
     "H": {"dims": (1650, 1200, 1000),"tare": 100.0, "type": "Customized Box/Trolley/Supplier Box"},
 }
 
-# WITHOUT WEIGHT catalogue (from Without_Weight.xlsx — different dims for F,G,H + extra I)
 BOXES_WITHOUT_WEIGHT = {
     "A": {"dims": (120,  80,   80),  "tare": 0.0, "type": "Bin"},
     "B": {"dims": (200,  180,  120), "tare": 0.0, "type": "Bin"},
@@ -429,100 +427,73 @@ def rounddown(x):
 
 
 def calc_qty_with_weight(box_L, box_W, box_H, part_L, part_W, part_H, unit_weight, tare):
-    """
-    WITH WEIGHT — exact replication of With_Weight.xlsx formulas:
-
-    Option 1 (Length–Length):
-      L_ratio = bL / pL
-      W_ratio = bW / pW
-      H_ratio = bH / pH
-      Qty  = ROUNDDOWN(L_ratio) × ROUNDDOWN(W_ratio) × IF(ROUNDDOWN(H_ratio) >= 1, 1, 0)
-      Wt   = Qty × UnitWeight + Tare
-
-    Option 2 (Length–Width):
-      L_ratio = bL / pW
-      W_ratio = bW / pL
-      H_ratio = bH / pH   (same H_ratio as Option 1)
-      Qty  = ROUNDDOWN(L_ratio) × ROUNDDOWN(W_ratio) × IF(ROUNDDOWN(H_ratio) > 1, 1, 0)
-      Wt   = Qty × UnitWeight + Tare
-
-    NOTE: Option H in the Excel uses >= 1 for BOTH options (special case).
-          We pass opt2_h_strict=False to handle that.
-    """
     h_ratio = rounddown(box_H / part_H)
-
-    # Option 1: L–L, height condition: >= 1
     o1_qty = (rounddown(box_L / part_L)
               * rounddown(box_W / part_W)
               * (1 if h_ratio >= 1 else 0))
     o1_wt  = round(o1_qty * unit_weight + tare, 3) if unit_weight is not None else ""
-
-    # Option 2: L–W, height condition: > 1  (strict, must exceed 1)
     o2_qty = (rounddown(box_L / part_W)
               * rounddown(box_W / part_L)
               * (1 if h_ratio > 1 else 0))
     o2_wt  = round(o2_qty * unit_weight + tare, 3) if unit_weight is not None else ""
-
     return o1_qty, o1_wt, o2_qty, o2_wt, h_ratio
 
 
 def calc_qty_without_weight(box_L, box_W, box_H, part_L, part_W, part_H):
-    """
-    WITHOUT WEIGHT — exact replication of Without_Weight.xlsx formulas:
-
-    Option 1 (Length–Length):
-      Qty = ROUNDDOWN(bL/pL) × ROUNDDOWN(bW/pW) × ROUNDDOWN(bH/pH)
-      Wt  = Qty × UnitWeight   (UnitWeight is blank → result is blank)
-
-    Option 2 (Length–Width):
-      Qty = ROUNDDOWN(bL/pW) × ROUNDDOWN(bW/pL) × ROUNDDOWN(bH/pH)
-      Wt  = Qty × UnitWeight   (UnitWeight is blank → result is blank)
-
-    KEY DIFFERENCE from With_Weight:
-      - No IF condition on height — plain ROUNDDOWN multiplication.
-      - This means even 0.x height ratios still count as 0 (floor), not 1.
-      - No tare weight is added (no tare column in Without_Weight.xlsx).
-    """
-    h_ratio_raw = box_H / part_H  # raw float, not floored yet
+    h_ratio_raw = box_H / part_H
     rd_h = rounddown(h_ratio_raw)
-
-    # Option 1: L–L
     o1_qty = (rounddown(box_L / part_L)
               * rounddown(box_W / part_W)
               * rd_h)
-
-    # Option 2: L–W
     o2_qty = (rounddown(box_L / part_W)
               * rounddown(box_W / part_L)
               * rd_h)
-
     return o1_qty, "", o2_qty, "", rounddown(h_ratio_raw)
 
 
-def run_analysis(df, box_mode, custom_box=None, custom_tare=0.0, has_weight=False, selected_boxes=None):
+# ── Column name helpers ────────────────────────────────────────────────────────
+
+def get_col(df, *candidates):
+    """Return the first matching column name (case-insensitive strip)."""
+    cols_lower = {c.strip().lower(): c for c in df.columns}
+    for cand in candidates:
+        if cand.strip().lower() in cols_lower:
+            return cols_lower[cand.strip().lower()]
+    return None
+
+
+def run_analysis(df, box_mode, custom_box=None, custom_tare=0.0, has_weight=False):
     results = []
 
-    # Select catalogue based on weight mode
+    # Resolve column names flexibly
+    col_part_no   = get_col(df, "Part No", "Part ID", "PartNo", "Part Number")
+    col_part_desc = get_col(df, "Part Description", "Part Desc", "Description", "Part Name")
+    col_length    = get_col(df, "Length")
+    col_width     = get_col(df, "Width")
+    col_height    = get_col(df, "Height")
+    col_unit_wt   = get_col(df, "Unit Weight") if has_weight else None
+
     if box_mode == "Manual":
         boxes_catalogue = {"Custom": {"dims": custom_box, "tare": custom_tare, "type": "Manual Entry"}}
     elif has_weight:
-        full_cat = BOXES_WITH_WEIGHT
-        boxes_catalogue = {k: v for k, v in full_cat.items() if selected_boxes is None or k in selected_boxes}
+        boxes_catalogue = BOXES_WITH_WEIGHT
     else:
-        full_cat = BOXES_WITHOUT_WEIGHT
-        boxes_catalogue = {k: v for k, v in full_cat.items() if selected_boxes is None or k in selected_boxes}
+        boxes_catalogue = BOXES_WITHOUT_WEIGHT
 
     for idx, row in df.iterrows():
-        part_L    = float(row["Length"])
-        part_W    = float(row["Width"])
-        part_H    = float(row["Height"])
-        part_name = str(row.get("Part Name", f"Part {idx+1}"))
+        part_L = float(row[col_length])
+        part_W = float(row[col_width])
+        part_H = float(row[col_height])
+
+        # Part ID / Part Description — handle missing columns gracefully
+        part_no   = str(row[col_part_no]).strip()   if col_part_no   else f"Part {idx+1}"
+        part_desc = str(row[col_part_desc]).strip()  if col_part_desc else ""
 
         unit_w = None
-        if has_weight:
-            val = row.get("Unit Weight", None)
+        if has_weight and col_unit_wt:
+            val = row.get(col_unit_wt, None)
             try:
-                unit_w = float(val) if val is not None and str(val).strip() != "" else None
+                unit_w = float(val) if val is not None and str(val).strip() not in ("", "nan") else None
             except (ValueError, TypeError):
                 unit_w = None
 
@@ -539,7 +510,6 @@ def run_analysis(df, box_mode, custom_box=None, custom_tare=0.0, has_weight=Fals
                     box_L, box_W, box_H, part_L, part_W, part_H
                 )
 
-            # Pick best by qty
             if o1_qty >= o2_qty:
                 best_option = "Option 1 (L–L)"
                 best_qty    = o1_qty
@@ -552,22 +522,23 @@ def run_analysis(df, box_mode, custom_box=None, custom_tare=0.0, has_weight=Fals
             label = bkey if box_mode == "Manual" else f"Option {bkey}"
 
             results.append({
-                "Part Name":        part_name,
-                "Part L×W×H (mm)":  f"{part_L:.0f}×{part_W:.0f}×{part_H:.0f}",
-                "Unit Weight (kg)": unit_w if unit_w is not None else "",
-                "Box":              label,
-                "Box Type":         bdata["type"],
-                "Box L×W×H (mm)":   f"{box_L}×{box_W}×{box_H}",
-                "Tare (kg)":        tare if has_weight else "",
-                "Best Option":      best_option,
-                "Best Qty / Box":   best_qty,
-                "Box Weight (kg)":  best_wt,
-                "Per Axis (Opt1)":  f"rd(bL/pL)={rounddown(box_L/part_L)} × rd(bW/pW)={rounddown(box_W/part_W)} × H-rd={h_ratio}",
-                "Per Axis (Opt2)":  f"rd(bL/pW)={rounddown(box_L/part_W)} × rd(bW/pL)={rounddown(box_W/part_L)} × H-rd={h_ratio}",
-                "Opt1 Qty":         o1_qty,
-                "Opt1 Wt":          o1_wt,
-                "Opt2 Qty":         o2_qty,
-                "Opt2 Wt":          o2_wt,
+                "Part ID":           part_no,
+                "Part Description":  part_desc,
+                "Part L×W×H (mm)":   f"{part_L:.0f}×{part_W:.0f}×{part_H:.0f}",
+                "Unit Weight (kg)":  unit_w if unit_w is not None else "",
+                "Box":               label,
+                "Box Type":          bdata["type"],
+                "Box L×W×H (mm)":    f"{box_L}×{box_W}×{box_H}",
+                "Tare (kg)":         tare if has_weight else "",
+                "Best Option":       best_option,
+                "Best Qty / Box":    best_qty,
+                "Box Weight (kg)":   best_wt,
+                "Per Axis (Opt1)":   f"rd(bL/pL)={rounddown(box_L/part_L)} × rd(bW/pW)={rounddown(box_W/part_W)} × H-rd={h_ratio}",
+                "Per Axis (Opt2)":   f"rd(bL/pW)={rounddown(box_L/part_W)} × rd(bW/pL)={rounddown(box_W/part_L)} × H-rd={h_ratio}",
+                "Opt1 Qty":          o1_qty,
+                "Opt1 Wt":           o1_wt,
+                "Opt2 Qty":          o2_qty,
+                "Opt2 Wt":           o2_wt,
             })
 
     return pd.DataFrame(results)
@@ -588,7 +559,7 @@ st.markdown("""
     <span class="masthead-logo">AgiloPack</span><span class="masthead-accent"></span>
   </div>
   <div class="masthead-tagline">Box Space Utilization</div>
-  <div class="masthead-version">v6.0 · Dual Formula Engine</div>
+  <div class="masthead-version">v6.1 · Dual Formula Engine</div>
 </div>
 """, unsafe_allow_html=True)
 
@@ -610,7 +581,7 @@ if st.session_state.step == 1:
       <span class="sec-title">Upload & Configuration</span>
     </div>
     <hr class="sec-rule">
-    <p class="sec-desc">Upload a CSV or Excel file with part dimensions. Required columns: <strong>Part Name, Length, Width, Height</strong>. Optional: <strong>Unit Weight</strong> — if present, the <em>With Weight</em> formula engine is used; otherwise the <em>Without Weight</em> engine applies.</p>
+    <p class="sec-desc">Upload a CSV or Excel file with part dimensions. Required columns: <strong>Part No, Part Description, Length, Width, Height</strong>. Optional: <strong>Unit Weight</strong> — if present, the <em>With Weight</em> formula engine is used; otherwise the <em>Without Weight</em> engine applies.</p>
     """, unsafe_allow_html=True)
 
     uploaded_file = st.file_uploader("Drop part file here (CSV or Excel)", type=["csv", "xlsx"])
@@ -619,12 +590,19 @@ if st.session_state.step == 1:
         df = pd.read_csv(uploaded_file) if uploaded_file.name.endswith('.csv') else pd.read_excel(uploaded_file)
         df.columns = [c.strip() for c in df.columns]
 
-        has_weight = "Unit Weight" in df.columns
+        has_weight = get_col(df, "Unit Weight") is not None
+        has_part_no   = get_col(df, "Part No", "Part ID", "PartNo", "Part Number") is not None
+        has_part_desc = get_col(df, "Part Description", "Part Desc", "Description", "Part Name") is not None
+
         st.info(f"⬡  {len(df)} row{'s' if len(df) != 1 else ''} loaded — columns: {', '.join(df.columns.tolist())}")
+
+        if not has_part_no:
+            st.warning("⚠ No 'Part No' column found — a generic index will be used.")
+        if not has_part_desc:
+            st.warning("⚠ No 'Part Description' column found — description will be blank.")
 
         if has_weight:
             st.markdown('<div class="weight-badge detected">⬡ Unit Weight detected → WITH WEIGHT formula engine active</div>', unsafe_allow_html=True)
-
             st.markdown("""
             <div class="formula-note">
                 <span>With Weight Formula Engine</span><br>
@@ -634,7 +612,6 @@ if st.session_state.step == 1:
             """, unsafe_allow_html=True)
         else:
             st.markdown('<div class="weight-badge not-detected">○ No Unit Weight → WITHOUT WEIGHT formula engine active</div>', unsafe_allow_html=True)
-
             st.markdown("""
             <div class="formula-note">
                 <span>Without Weight Formula Engine</span><br>
@@ -648,7 +625,6 @@ if st.session_state.step == 1:
 
         custom_box  = None
         custom_tare = 0.0
-        selected_boxes = []
 
         if box_mode == "Manual Box Size Entry":
             st.markdown("<br>", unsafe_allow_html=True)
@@ -659,127 +635,28 @@ if st.session_state.step == 1:
             custom_box = (bl, bw, bh)
             if has_weight:
                 custom_tare = c4.number_input("Box Tare Weight (kg)", value=0.0, step=0.1)
-
         else:
             st.markdown("<br>", unsafe_allow_html=True)
             catalogue = BOXES_WITH_WEIGHT if has_weight else BOXES_WITHOUT_WEIGHT
-            all_keys  = list(catalogue.keys())
-
-            # Init selection state — all selected by default
-            sel_key = f"box_sel_{'ww' if has_weight else 'nw'}"
-            if sel_key not in st.session_state:
-                st.session_state[sel_key] = {k: True for k in all_keys}
-
-            st.markdown("""
-            <div style="font-family:'DM Mono',monospace;font-size:0.6rem;letter-spacing:2px;
-                        text-transform:uppercase;color:#aaa;margin-bottom:0.8rem;">
-                ↳ Click boxes to select / deselect — only selected boxes will be analysed
-            </div>
-            """, unsafe_allow_html=True)
-
-            # Select All / Clear All helpers
-            sa_col, cl_col, sp_col = st.columns([1, 1, 6])
-            with sa_col:
-                if st.button("Select All", key="sel_all"):
-                    for k in all_keys:
-                        st.session_state[sel_key][k] = True
-                    st.rerun()
-            with cl_col:
-                if st.button("Clear All", key="clr_all"):
-                    for k in all_keys:
-                        st.session_state[sel_key][k] = False
-                    st.rerun()
-
-            st.markdown("<br>", unsafe_allow_html=True)
-
-            # Render 4-column checkbox grid matching the visual style
-            cols_per_row = 4
-            keys_list    = all_keys
-            for row_start in range(0, len(keys_list), cols_per_row):
-                row_keys = keys_list[row_start: row_start + cols_per_row]
-                cols     = st.columns(cols_per_row)
-                for ci, k in enumerate(row_keys):
-                    v = catalogue[k]
-                    d = v["dims"]
-                    tare_str = f"Tare: {v['tare']} kg" if has_weight else "No tare"
-                    is_sel   = st.session_state[sel_key].get(k, True)
-
-                    # Visual card via markdown + checkbox underneath
-                    border_color = "#111" if is_sel else "#e0dbd4"
-                    bg_color     = "#111" if is_sel else "#fff"
-                    txt_color    = "#f5f2ec" if is_sel else "#111"
-                    dim_color    = "#ccc"   if is_sel else "#999"
-                    type_color   = "#aaa"
-                    indicator    = "✓" if is_sel else ""
-
-                    with cols[ci]:
-                        st.markdown(f"""
-                        <div style="
-                            border: 2px solid {border_color};
-                            background: {bg_color};
-                            padding: 1rem 1.1rem 0.7rem 1.1rem;
-                            margin-bottom: 4px;
-                            position: relative;
-                            transition: all 0.15s;
-                            cursor: pointer;
-                        ">
-                            <div style="position:absolute;top:8px;right:10px;
-                                        font-family:'Bebas Neue',sans-serif;font-size:1rem;
-                                        color:{'#e63329' if is_sel else '#ddd'};">{indicator}</div>
-                            <div style="font-family:'Bebas Neue',sans-serif;font-size:1.05rem;
-                                        letter-spacing:1.5px;color:{txt_color};margin-bottom:3px;">
-                                Option {k}
-                            </div>
-                            <div style="font-family:'DM Mono',monospace;font-size:0.66rem;color:{dim_color};">
-                                {d[0]}×{d[1]}×{d[2]} mm
-                            </div>
-                            <div style="font-family:'DM Mono',monospace;font-size:0.58rem;
-                                        color:{type_color};margin-top:3px;">
-                                {v['type'][:28]}
-                            </div>
-                            <div style="font-family:'DM Mono',monospace;font-size:0.56rem;
-                                        color:{dim_color};margin-top:2px;">
-                                {tare_str}
-                            </div>
-                        </div>
-                        """, unsafe_allow_html=True)
-
-                        checked = st.checkbox(
-                            f"Select Option {k}",
-                            value=is_sel,
-                            key=f"chk_{sel_key}_{k}",
-                            label_visibility="collapsed"
-                        )
-                        if checked != is_sel:
-                            st.session_state[sel_key][k] = checked
-                            st.rerun()
-
-                # Fill empty slots in last row
-                for ci in range(len(row_keys), cols_per_row):
-                    cols[ci].empty()
-
-            # Collect selected boxes
-            selected_boxes = [k for k in all_keys if st.session_state[sel_key].get(k, True)]
-
-            if not selected_boxes:
-                st.warning("⚠ No boxes selected — please select at least one box to run analysis.")
-
-            # Show count badge
-            st.markdown(f"""
-            <div style="font-family:'DM Mono',monospace;font-size:0.62rem;letter-spacing:2px;
-                        text-transform:uppercase;color:#888;margin-top:0.6rem;">
-                {len(selected_boxes)} of {len(all_keys)} boxes selected for analysis
-            </div>
-            """, unsafe_allow_html=True)
+            grid_html = '<div class="bx-grid">'
+            for k, v in catalogue.items():
+                d = v["dims"]
+                tare_str = f"tare: {v['tare']} kg" if has_weight else "no tare"
+                grid_html += f'''<div class="bx-item">
+                    <div class="bx-name">Option {k}</div>
+                    <div class="bx-dims">{d[0]}×{d[1]}×{d[2]} mm</div>
+                    <div class="bx-type">{v["type"]}</div>
+                    <div class="bx-tare">{tare_str}</div>
+                </div>'''
+            grid_html += '</div>'
+            st.markdown(grid_html, unsafe_allow_html=True)
 
         st.markdown("<br>", unsafe_allow_html=True)
-        can_run = (box_mode == "Manual Box Size Entry") or (len(selected_boxes) > 0)
-        if st.button("Run Analysis →", disabled=not can_run):
+        if st.button("Run Analysis →"):
             st.session_state.data['results_df'] = run_analysis(
                 df,
                 "Catalogue" if box_mode == "Predefined Catalogue" else "Manual",
-                custom_box, custom_tare, has_weight,
-                selected_boxes if box_mode == "Predefined Catalogue" else None
+                custom_box, custom_tare, has_weight
             )
             st.session_state.data['has_weight'] = has_weight
             st.session_state.step = 2
@@ -806,18 +683,14 @@ elif st.session_state.step == 2:
             st.session_state.step = 1
             st.rerun()
     else:
-        parts_count = res_df["Part Name"].nunique()
+        parts_count = res_df["Part ID"].nunique()
         best_qty    = int(res_df["Best Qty / Box"].max())
         avg_qty     = res_df["Best Qty / Box"].mean()
 
         weight_numeric = pd.to_numeric(res_df["Box Weight (kg)"], errors='coerce')
-        max_wt_raw = weight_numeric.max() if has_weight else None
-        if max_wt_raw is None or (isinstance(max_wt_raw, float) and math.isnan(max_wt_raw)):
-            max_wt = 0.0
-        else:
-            max_wt = max_wt_raw
-        stat4_v  = f"{max_wt:.1f} kg" if has_weight else "N/A"
-        stat4_fs = "2.6rem" if has_weight else "1.5rem"
+        max_wt   = weight_numeric.max() if has_weight else None
+        stat4_v  = f"{max_wt:.1f} kg" if (max_wt is not None and not math.isnan(max_wt)) else "N/A"
+        stat4_fs = "2.6rem" if max_wt is not None else "1.5rem"
 
         engine_label = "With Weight Engine" if has_weight else "Without Weight Engine"
 
@@ -842,39 +715,27 @@ elif st.session_state.step == 2:
         </div>
         """, unsafe_allow_html=True)
 
-        # Engine badge
-        badge_color = "#1a7d48" if has_weight else "#555"
-        badge_bg    = "#f0faf5" if has_weight else "#fafafa"
         st.markdown(
             f'<div class="weight-badge {"detected" if has_weight else "not-detected"}">'
             f'Formula Engine: {engine_label}</div>',
             unsafe_allow_html=True
         )
 
-        def fmt_wt(val):
-            if val == "" or val is None:
-                return "—"
-            try:
-                f = float(val)
-                if math.isnan(f):
-                    return "0 kg"
-                return f"{f} kg"
-            except (TypeError, ValueError):
-                return "—"
-
         rows_html = ""
         for _, row in res_df.iterrows():
             qty       = int(row["Best Qty / Box"])
             qty_color = "#2a9d5c" if qty >= 10 else ("#f4a300" if qty >= 4 else ("#e63329" if qty == 0 else "#111"))
-            wt_disp  = fmt_wt(row["Box Weight (kg)"])
-            o1_wt_d  = fmt_wt(row["Opt1 Wt"])
-            o2_wt_d  = fmt_wt(row["Opt2 Wt"])
+            wt_val    = row["Box Weight (kg)"]
+            wt_disp   = f"{wt_val} kg" if wt_val != "" else "—"
+            o1_wt_d   = str(row["Opt1 Wt"]) + " kg" if row["Opt1 Wt"] != "" else "—"
+            o2_wt_d   = str(row["Opt2 Wt"]) + " kg" if row["Opt2 Wt"] != "" else "—"
             rows_html += f"""
             <tr>
-                <td style="font-weight:500;">{row['Part Name']}</td>
-                <td style="color:#666;font-size:0.68rem;">{row['Part L×W×H (mm)']}</td>
+                <td style="font-weight:600;white-space:nowrap;">{row['Part ID']}</td>
+                <td style="color:#444;font-size:0.72rem;max-width:180px;">{row['Part Description']}</td>
+                <td style="color:#666;font-size:0.68rem;white-space:nowrap;">{row['Part L×W×H (mm)']}</td>
                 <td>{row['Box']}</td>
-                <td style="font-size:0.65rem;color:#888;">{row['Box L×W×H (mm)']}</td>
+                <td style="font-size:0.65rem;color:#888;white-space:nowrap;">{row['Box L×W×H (mm)']}</td>
                 <td style="font-family:'Bebas Neue',sans-serif;font-size:1.4rem;color:{qty_color};">{qty}</td>
                 <td style="color:#555;font-size:0.72rem;">{row['Best Option']}</td>
                 <td style="color:#333;">{wt_disp}</td>
@@ -899,7 +760,8 @@ elif st.session_state.step == 2:
         <table>
           <thead>
             <tr>
-              <th>Part Name</th><th>Part Dims</th><th>Box</th><th>Box Dims</th>
+              <th>Part ID</th><th>Part Description</th><th>Part Dims</th>
+              <th>Box</th><th>Box Dims</th>
               <th>Best Qty</th><th>Best Option</th><th>Box Weight</th><th>Opt1 / Opt2 Detail</th>
             </tr>
           </thead>
@@ -912,7 +774,7 @@ elif st.session_state.step == 2:
 
         output = io.BytesIO()
         export_cols = [
-            "Part Name", "Part L×W×H (mm)", "Unit Weight (kg)",
+            "Part ID", "Part Description", "Part L×W×H (mm)", "Unit Weight (kg)",
             "Box", "Box Type", "Box L×W×H (mm)", "Tare (kg)",
             "Best Option", "Best Qty / Box", "Box Weight (kg)",
             "Per Axis (Opt1)", "Per Axis (Opt2)",
