@@ -499,16 +499,18 @@ def calc_qty_without_weight(box_L, box_W, box_H, part_L, part_W, part_H):
     return o1_qty, "", o2_qty, "", rounddown(h_ratio_raw)
 
 
-def run_analysis(df, box_mode, custom_box=None, custom_tare=0.0, has_weight=False):
+def run_analysis(df, box_mode, custom_box=None, custom_tare=0.0, has_weight=False, selected_boxes=None):
     results = []
 
     # Select catalogue based on weight mode
     if box_mode == "Manual":
         boxes_catalogue = {"Custom": {"dims": custom_box, "tare": custom_tare, "type": "Manual Entry"}}
     elif has_weight:
-        boxes_catalogue = BOXES_WITH_WEIGHT
+        full_cat = BOXES_WITH_WEIGHT
+        boxes_catalogue = {k: v for k, v in full_cat.items() if selected_boxes is None or k in selected_boxes}
     else:
-        boxes_catalogue = BOXES_WITHOUT_WEIGHT
+        full_cat = BOXES_WITHOUT_WEIGHT
+        boxes_catalogue = {k: v for k, v in full_cat.items() if selected_boxes is None or k in selected_boxes}
 
     for idx, row in df.iterrows():
         part_L    = float(row["Length"])
@@ -646,6 +648,7 @@ if st.session_state.step == 1:
 
         custom_box  = None
         custom_tare = 0.0
+        selected_boxes = []
 
         if box_mode == "Manual Box Size Entry":
             st.markdown("<br>", unsafe_allow_html=True)
@@ -656,29 +659,127 @@ if st.session_state.step == 1:
             custom_box = (bl, bw, bh)
             if has_weight:
                 custom_tare = c4.number_input("Box Tare Weight (kg)", value=0.0, step=0.1)
+
         else:
             st.markdown("<br>", unsafe_allow_html=True)
-            # Show the appropriate catalogue
             catalogue = BOXES_WITH_WEIGHT if has_weight else BOXES_WITHOUT_WEIGHT
-            grid_html = '<div class="bx-grid">'
-            for k, v in catalogue.items():
-                d = v["dims"]
-                tare_str = f"tare: {v['tare']} kg" if has_weight else "no tare"
-                grid_html += f'''<div class="bx-item">
-                    <div class="bx-name">Option {k}</div>
-                    <div class="bx-dims">{d[0]}×{d[1]}×{d[2]} mm</div>
-                    <div class="bx-type">{v["type"]}</div>
-                    <div class="bx-tare">{tare_str}</div>
-                </div>'''
-            grid_html += '</div>'
-            st.markdown(grid_html, unsafe_allow_html=True)
+            all_keys  = list(catalogue.keys())
+
+            # Init selection state — all selected by default
+            sel_key = f"box_sel_{'ww' if has_weight else 'nw'}"
+            if sel_key not in st.session_state:
+                st.session_state[sel_key] = {k: True for k in all_keys}
+
+            st.markdown("""
+            <div style="font-family:'DM Mono',monospace;font-size:0.6rem;letter-spacing:2px;
+                        text-transform:uppercase;color:#aaa;margin-bottom:0.8rem;">
+                ↳ Click boxes to select / deselect — only selected boxes will be analysed
+            </div>
+            """, unsafe_allow_html=True)
+
+            # Select All / Clear All helpers
+            sa_col, cl_col, sp_col = st.columns([1, 1, 6])
+            with sa_col:
+                if st.button("Select All", key="sel_all"):
+                    for k in all_keys:
+                        st.session_state[sel_key][k] = True
+                    st.rerun()
+            with cl_col:
+                if st.button("Clear All", key="clr_all"):
+                    for k in all_keys:
+                        st.session_state[sel_key][k] = False
+                    st.rerun()
+
+            st.markdown("<br>", unsafe_allow_html=True)
+
+            # Render 4-column checkbox grid matching the visual style
+            cols_per_row = 4
+            keys_list    = all_keys
+            for row_start in range(0, len(keys_list), cols_per_row):
+                row_keys = keys_list[row_start: row_start + cols_per_row]
+                cols     = st.columns(cols_per_row)
+                for ci, k in enumerate(row_keys):
+                    v = catalogue[k]
+                    d = v["dims"]
+                    tare_str = f"Tare: {v['tare']} kg" if has_weight else "No tare"
+                    is_sel   = st.session_state[sel_key].get(k, True)
+
+                    # Visual card via markdown + checkbox underneath
+                    border_color = "#111" if is_sel else "#e0dbd4"
+                    bg_color     = "#111" if is_sel else "#fff"
+                    txt_color    = "#f5f2ec" if is_sel else "#111"
+                    dim_color    = "#ccc"   if is_sel else "#999"
+                    type_color   = "#aaa"
+                    indicator    = "✓" if is_sel else ""
+
+                    with cols[ci]:
+                        st.markdown(f"""
+                        <div style="
+                            border: 2px solid {border_color};
+                            background: {bg_color};
+                            padding: 1rem 1.1rem 0.7rem 1.1rem;
+                            margin-bottom: 4px;
+                            position: relative;
+                            transition: all 0.15s;
+                            cursor: pointer;
+                        ">
+                            <div style="position:absolute;top:8px;right:10px;
+                                        font-family:'Bebas Neue',sans-serif;font-size:1rem;
+                                        color:{'#e63329' if is_sel else '#ddd'};">{indicator}</div>
+                            <div style="font-family:'Bebas Neue',sans-serif;font-size:1.05rem;
+                                        letter-spacing:1.5px;color:{txt_color};margin-bottom:3px;">
+                                Option {k}
+                            </div>
+                            <div style="font-family:'DM Mono',monospace;font-size:0.66rem;color:{dim_color};">
+                                {d[0]}×{d[1]}×{d[2]} mm
+                            </div>
+                            <div style="font-family:'DM Mono',monospace;font-size:0.58rem;
+                                        color:{type_color};margin-top:3px;">
+                                {v['type'][:28]}
+                            </div>
+                            <div style="font-family:'DM Mono',monospace;font-size:0.56rem;
+                                        color:{dim_color};margin-top:2px;">
+                                {tare_str}
+                            </div>
+                        </div>
+                        """, unsafe_allow_html=True)
+
+                        checked = st.checkbox(
+                            f"Select Option {k}",
+                            value=is_sel,
+                            key=f"chk_{sel_key}_{k}",
+                            label_visibility="collapsed"
+                        )
+                        if checked != is_sel:
+                            st.session_state[sel_key][k] = checked
+                            st.rerun()
+
+                # Fill empty slots in last row
+                for ci in range(len(row_keys), cols_per_row):
+                    cols[ci].empty()
+
+            # Collect selected boxes
+            selected_boxes = [k for k in all_keys if st.session_state[sel_key].get(k, True)]
+
+            if not selected_boxes:
+                st.warning("⚠ No boxes selected — please select at least one box to run analysis.")
+
+            # Show count badge
+            st.markdown(f"""
+            <div style="font-family:'DM Mono',monospace;font-size:0.62rem;letter-spacing:2px;
+                        text-transform:uppercase;color:#888;margin-top:0.6rem;">
+                {len(selected_boxes)} of {len(all_keys)} boxes selected for analysis
+            </div>
+            """, unsafe_allow_html=True)
 
         st.markdown("<br>", unsafe_allow_html=True)
-        if st.button("Run Analysis →"):
+        can_run = (box_mode == "Manual Box Size Entry") or (len(selected_boxes) > 0)
+        if st.button("Run Analysis →", disabled=not can_run):
             st.session_state.data['results_df'] = run_analysis(
                 df,
                 "Catalogue" if box_mode == "Predefined Catalogue" else "Manual",
-                custom_box, custom_tare, has_weight
+                custom_box, custom_tare, has_weight,
+                selected_boxes if box_mode == "Predefined Catalogue" else None
             )
             st.session_state.data['has_weight'] = has_weight
             st.session_state.step = 2
@@ -710,9 +811,13 @@ elif st.session_state.step == 2:
         avg_qty     = res_df["Best Qty / Box"].mean()
 
         weight_numeric = pd.to_numeric(res_df["Box Weight (kg)"], errors='coerce')
-        max_wt   = weight_numeric.max() if has_weight else None
-        stat4_v  = f"{max_wt:.1f} kg" if (max_wt is not None and not math.isnan(max_wt)) else "N/A"
-        stat4_fs = "2.6rem" if max_wt is not None else "1.5rem"
+        max_wt_raw = weight_numeric.max() if has_weight else None
+        if max_wt_raw is None or (isinstance(max_wt_raw, float) and math.isnan(max_wt_raw)):
+            max_wt = 0.0
+        else:
+            max_wt = max_wt_raw
+        stat4_v  = f"{max_wt:.1f} kg" if has_weight else "N/A"
+        stat4_fs = "2.6rem" if has_weight else "1.5rem"
 
         engine_label = "With Weight Engine" if has_weight else "Without Weight Engine"
 
@@ -746,14 +851,24 @@ elif st.session_state.step == 2:
             unsafe_allow_html=True
         )
 
+        def fmt_wt(val):
+            if val == "" or val is None:
+                return "—"
+            try:
+                f = float(val)
+                if math.isnan(f):
+                    return "0 kg"
+                return f"{f} kg"
+            except (TypeError, ValueError):
+                return "—"
+
         rows_html = ""
         for _, row in res_df.iterrows():
             qty       = int(row["Best Qty / Box"])
             qty_color = "#2a9d5c" if qty >= 10 else ("#f4a300" if qty >= 4 else ("#e63329" if qty == 0 else "#111"))
-            wt_val    = row["Box Weight (kg)"]
-            wt_disp   = f"{wt_val} kg" if wt_val != "" else "—"
-            o1_wt_d   = str(row["Opt1 Wt"]) + " kg" if row["Opt1 Wt"] != "" else "—"
-            o2_wt_d   = str(row["Opt2 Wt"]) + " kg" if row["Opt2 Wt"] != "" else "—"
+            wt_disp  = fmt_wt(row["Box Weight (kg)"])
+            o1_wt_d  = fmt_wt(row["Opt1 Wt"])
+            o2_wt_d  = fmt_wt(row["Opt2 Wt"])
             rows_html += f"""
             <tr>
                 <td style="font-weight:500;">{row['Part Name']}</td>
